@@ -145,6 +145,22 @@ UARTIntHandler1(void)
 	if( talk_mode == true ){return;}
 }
 
+// Cycle power to the GSM module
+void GSMpowerCycle( void )
+{     
+	//GSM_RESET is active low. Keep this on all the time
+	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_6, 0);
+	for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}
+	UART0printf("--- GSM reset asserted\n\r");
+
+	//PWRKEY should be 1 for at least 1 second to power on/off the SIM900 module
+	//(This pulls down actual SIM900 PWRKEY)
+	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_7, GPIO_PIN_7);
+	for(ui32Loop = 0; ui32Loop < 10000000; ui32Loop++){}	//3 second delay
+	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_7, 0);			//PWRKEY de-asserted
+	UART0printf("\n\r--- GSM power key cycled\n\r");
+}
+
 // Handles button press events
 void
 SysTickIntHandler(void)
@@ -166,11 +182,11 @@ SysTickIntHandler(void)
 				LEDhold = GPIOPinRead(GPIO_PORTF_BASE, LEDmap);
 				GPIOPinWrite(GPIO_PORTF_BASE, LEDmap, 0);
 				GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);
-				UART0printf("> Entering talk to GSM mode. Press left button to end.\n\r");
+				UART0printf("> [Left button] Entering talk to GSM mode. Press left button to end.\n\r");
 				talk_mode = true;
 			}
 			else{
-				UART0printf("> Returning to main program.\n\r");
+				UART0printf("> [Left button] Returning to main program.\n\r");
 				GPIOPinWrite(GPIO_PORTF_BASE, LEDmap, LEDhold);		//Restore LED status
 				talk_mode = false;
 			}
@@ -181,7 +197,8 @@ SysTickIntHandler(void)
         // Check if the button has been held int32_t enough to act
         if((ui32TickCounter % APP_BUTTON_POLL_DIVIDER) == 0)
         {
-			UART0printf("right button press\n\r");
+			UART0printf("> [Right button] Cycling power to GSM.\n\r");
+			GSMpowerCycle();
         }
         break;
 
@@ -189,7 +206,7 @@ SysTickIntHandler(void)
         // Both buttons for longer than debounce time
         if(ui32HibModeEntryCount < APP_HIB_BUTTON_DEBOUNCE)
         {
-			UART0printf("both button press\n\r");
+			UART0printf("> [Both buttons] No action defined.\n\r");
         }
         break;
 
@@ -233,14 +250,9 @@ void checktime(void)
 			datetimezone[22] = '\0';
 			strncpy(timestamp,rawStamp+9,8);
 			strncpy(zonestamp,rawStamp+17,3);
-		}
-		else if ( strncmp(response,"*PSNWID: \"",11) == 0 )
-		{
-			for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}
-			sprintf (printint, "%d", k);
-			UART0printf( "> Found PSNWID " );
-			UART0printf( (const char *) printint);
-			UART0printf( " \r\n" );			
+			// Time values error checking EXPAND/IMPROVE: datestamp, timestamp, zonestamp
+			if ( strncmp(datestamp,"2000",4) != 0 ){ timeunknown = false; }
+			else { k--; }
 		}
 	}
 	// Re-enable the interrupts
@@ -293,18 +305,7 @@ bool checkpower (void)
     {
 		// Commands to turn on the GSM module.    
 		UART0printf("> GSM is OFF, turning on...\n\r");
-        
-		//GSM_RESET is active low. Keep this on all the time
-		GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_6, 0);
-		for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}
-		UART0printf("> Reset asserted...\n\r");
-
-		//PWRKEY should be 1 for at least 1 second to power on/off the SIM900 module
-		//(This pulls down actual SIM900 PWRKEY)
-		GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_7, GPIO_PIN_7);
-		for(ui32Loop = 0; ui32Loop < 10000000; ui32Loop++){}                      //3 second delay
-		GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_7, 0);            //PWRKEY de-asserted
-		UART0printf("\n\r> Power key cycled...\n\r");
+		GSMpowerCycle();
 		
 		// Delay for a bit, check again...
 		for(ui32Loop = 0; ui32Loop < 1000000; ui32Loop++){}
@@ -382,6 +383,22 @@ main(void)
 		UART0printf( " of 3...\r\n" );
 		if ( checkpower() == true )
 		{
+			// Wait for time to come down from server
+			//UART1gets(g_cInput,sizeof(g_cInput));
+			// Stop checking after new-line
+			//response = strtok(g_cInput,"\n");
+			// We'll get an "OK" after re-checking, so wait for the next response
+			//if ( strncmp(response,"OK",2) == 0 )
+			//{
+			//	UART0printf("> Heard OK, waiting again...\n\r");
+			//	UART1gets(g_cInput,sizeof(g_cInput));
+			//	UART0printf("> Heard something else!\n\r");
+			//}
+			
+			//UART0printf( "> HEARD: " );
+			//UART0printf( (const char *) response);
+			//UART0printf( "\r\n" );
+			
 			blink(5,300000,2);
 			UART0printf("> GSM is ON.\n\r");
 			break;
