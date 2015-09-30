@@ -17,9 +17,12 @@
 #include "uart1stdio.h"
 #include "string.h"
 #include "stdio.h"
+#include <stdlib.h>
 #include "buttons.h"
 #include "driverlib/systick.h"
 #include "eeprom.h"
+#include "inc/hw_types.h"
+#include "inc/hw_gpio.h"
 #define RD_LED GPIO_PIN_1
 #define BL_LED GPIO_PIN_2
 #define GN_LED GPIO_PIN_3
@@ -32,7 +35,7 @@ uint32_t ui32Data;
 #define APP_HIB_BUTTON_DEBOUNCE          (APP_SYSTICKS_PER_SEC * 3)
 static volatile uint32_t ui32HibModeEntryCount;
 
-// Global variables.
+// Global variables
 bool GSM_off = true;
 bool talk_mode = false;
 int LEDhold;
@@ -43,16 +46,33 @@ unsigned long i,j;
 unsigned long ulStatus0,ulStatus1;
 char hold[2][128];
 static char g_cInput[128];
-int k;							// Generic counter
 char *response = NULL;
-char printint[10];				// Generic variable to use when printing an integer
 volatile uint32_t ui32Loop;		// for time delays
 
+// For EEPROM
+#define E2PROM_TEST_ADRES 0x0000 
+uint32_t esize,eblock;
+
+struct eprom_timestamp
+{
+	int v1;
+	int v2;
+	int v3;
+	int v4;
+	int v5;
+	int v6;
+	int v7;
+}; 
+
+struct eprom_timestamp eprom_readtime =  {0,0,0,0,0,0,0}; /* Read struct */
+
+// Generic variables
+int k;							// Generic counter
+char printstr[2]; 				// For printing strings during debugging
+char printint[10];				// Generic variable to use when printing an integer
+
 // Checktime function writes to these variables for main program access
-char timestamp[20];
-char zonestamp[20];
-char datestamp[20] = "20";
-char datetimezone[30] = "20";
+int hh,mm,ss,dd,mo,yy,zz;
 
 // REQUIRED.
 #ifdef DEBUG
@@ -271,6 +291,10 @@ void checktime(void)
  	bool timeunknown = true;
 	char *rawStamp = NULL;
 	char rawDate[20];
+	char timestamp[20];
+	char zonestamp[20];
+	char datestamp[20] = "20";
+	char datetimezone[30] = "20";
 	
 	k = 3;
 	while ( timeunknown == true && k != 0 )
@@ -300,6 +324,17 @@ void checktime(void)
 			if ( strncmp(datestamp,"2000",4) != 0 ){ timeunknown = false; }
 			else { k--; }
 		}
+	}
+	
+	// Split to individual integers
+	sscanf(timestamp, "%d:%d:%d", &hh, &mm, &ss);
+	sscanf(datestamp, "%d/%d/%d", &yy, &mo, &dd);
+	if (strstr(zonestamp,"+")){
+		sscanf(zonestamp, "+%d", &zz);
+	}
+	else{
+		sscanf(zonestamp, "-%d", &zz);
+		zz = zz*-1;
 	}
 }
 
@@ -400,15 +435,22 @@ main(void)
 	UART0printf("> Getting date/time from the GSM module\n\r");
 	checktime();
 	blink(10,300000,2);
-	UART0printf("> The current date is: ");
-	UART0printf( datestamp);
-	UART0printf("\n\r> The current time is: ");
-	UART0printf( timestamp);
-	UART0printf("\n\r> The zone is: ");
-	UART0printf( zonestamp);
-	UART0printf("\n\r> All together now: ");
-	UART0printf( datetimezone);
-	UART0printf("\n\r");
+	UART0printf("> Current time: %u/%u/%u, %u:%u:%u, %d \n\r",yy,mo,dd,hh,mm,ss,zz);
+
+	// Store on-time, retrieve last on-time.
+	EEPROMInit();
+	struct eprom_timestamp eprom_writetime = {yy,mo,dd,hh,mm,ss,zz};
+	//Read from struct at EEPROM start from 0x0000
+	EEPROMRead((uint32_t *)&eprom_readtime, E2PROM_TEST_ADRES, sizeof(eprom_readtime));
+	UART0printf("> Last on-time: %u/%u/%u, %u:%u:%u, %d (EEPROM address: %u)\n\r", eprom_readtime.v1, eprom_readtime.v2, eprom_readtime.v3, eprom_readtime.v4, eprom_readtime.v5, eprom_readtime.v6, eprom_readtime.v7, E2PROM_TEST_ADRES);
+	//Write struct to EEPROM start from 0x0000
+	EEPROMProgram((uint32_t *)&eprom_writetime, E2PROM_TEST_ADRES, sizeof(eprom_writetime));
+	
+	// Some EEPROM functions
+	//esize = EEPROMSizeGet(); // Get EEPROM Size 
+	//UART0printf("E2> EEPROM Size %d bytes\n", e2size);
+	//eblock = EEPROMBlockCountGet(); // Get EEPROM Block Count
+	//UART0printf("E2> EEPROM Blok Count: %d\n", e2block);
 		
 	// Initialize the SysTick interrupt to process buttons
 	ButtonsInit();
@@ -416,31 +458,6 @@ main(void)
 	SysTickEnable();
 	SysTickIntEnable();
 	IntMasterEnable();
-	
-	// EEPROM testing area
-	bool EEPROMtest = true;
-	while ( EEPROMtest )
-	{
-		EEPROMInit();
-		
-		// EEPROM test: Each time this program runs, store the value from datetimezone, and read back the old value
-		
-		uint32_t oldtime[30];
-		EEPROMRead(oldtime, 0x400, sizeof(oldtime));
-		
-		for (k=1; k<=sizeof(datetimezone); k++)
-		{
-			EEPROMProgram( (uint32_t *) datetimezone[k], 0x399+k, 1);
-		}
-		EEPROMProgram( (uint32_t *) '\0', 0x400, 1);
-		
-		UART0printf("> The previous on-time was: ");
-		sprintf (printint, "%d", oldtime);
-		UART0printf( (const char *) printint);
-		UART0printf("\n\r");
-		
-		break;
-	}
 	
 	UART0printf("> Setup complete! \n\r>>> RUNNING MAIN PROGRAM\n\r");
 	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
