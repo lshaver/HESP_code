@@ -27,6 +27,11 @@
 #define BL_LED GPIO_PIN_2
 #define GN_LED GPIO_PIN_3
 
+// Debug/testing functions:
+bool getthetime = false;	// Get on-time from GSM network
+bool EEPROM = false;		// Store the on-time and retrieve previous ontime from EEPROM
+bool relay = false;			// Cycle the relays on/off to test
+
 // For driving buttons
 uint32_t ui32Buttons;
 uint32_t ui32Data;
@@ -36,18 +41,22 @@ uint32_t ui32Data;
 static volatile uint32_t ui32HibModeEntryCount;
 
 // Global variables
-bool GSM_off = true;
-bool talk_mode = false;
-int LEDhold;
-int LEDmap;
-unsigned char var;
-unsigned char ptr[10000];
-unsigned long i,j;
-unsigned long ulStatus0,ulStatus1;
-char hold[2][128];
-static char g_cInput[128];
-char *response = NULL;
-volatile uint32_t ui32Loop;		// for time delays
+bool GSM_off = true;		// Flag to see if the GSM module is on/off
+bool talk_mode = false;		// Mode for user to interface directly with GSM module
+int LEDhold;				// Holds status of RGB LED so it can be restored after blinking
+int LEDmap;					// Map of the RGB LED bits (works with LEDhold, ie store LEDhold to LEDmap)
+static char g_cInput[128];	// String input to a UART
+char *response = NULL;		// Use to parse UART inputs
+volatile uint32_t ui32Loop;	// for time delays
+int msgNotify = 0;			// Flag to see how many new messages there are
+
+// Variables used by GSM and console interrupts
+unsigned char var;					// Incoming UART character
+unsigned char ptr[10000];			// Array for storing incoming UART characters
+unsigned long i;					// UART character pointer. There was a j here but I don't think it's used.
+unsigned long ulStatus0,ulStatus1;	// To hold the interrupt status
+char msgCountStr[3];				// Hold the string with the number of new messages
+int msgCount = 0;					// Hold the integer value with number of new messages
 
 // For EEPROM
 #define E2PROM_TEST_ADRES 0x0000 
@@ -67,9 +76,7 @@ struct eprom_timestamp
 struct eprom_timestamp eprom_readtime =  {0,0,0,0,0,0,0}; /* Read struct */
 
 // Generic variables
-int k;							// Generic counter
-char printstr[2]; 				// For printing strings during debugging
-char printint[10];				// Generic variable to use when printing an integer
+int k;		// Generic counter
 
 // Checktime function writes to these variables for main program access
 int hh,mm,ss,dd,mo,yy,zz;
@@ -88,39 +95,68 @@ bool aCodeauth(char *incoming_number){
 }
 
 // Send an SMS
-void sendsms(char * recipient, char * body)
+/*void sendsms(char * recipient, char * body)
 {
-//    strcpy (hold[1],"AT+CMGS=\"");
-//    strcat (hold[1],recipient);
-//    strcat (hold[1],"\"\r");
-//    strcat (body,"\r");
-//    UARTSend1( (const unsigned char *) hold[1],strlen(hold[1]));
-//    SysCtlDelay(SysCtlClockGet() *0.5);
-//    UARTSend1( (const unsigned char *) body,strlen(body));
-//    SysCtlDelay(SysCtlClockGet() *0.5);
-//    UARTSend1("\x1A",1);
-//    SysCtlDelay(SysCtlClockGet() *0.5);
-}
+    char hold[2][128];
+	  strcpy (hold[1],"AT+CMGS=\"");
+    strcat (hold[1],recipient);
+    strcat (hold[1],"\"\r");
+    strcat (body,"\r");
+    UARTSend1( (const unsigned char *) hold[1],strlen(hold[1]));
+    SysCtlDelay(SysCtlClockGet() *0.5);
+    UARTSend1( (const unsigned char *) body,strlen(body));
+    SysCtlDelay(SysCtlClockGet() *0.5);
+    UARTSend1("\x1A",1);
+    SysCtlDelay(SysCtlClockGet() *0.5);
+}*/
 
 // Turn on the relay(s)
 void on(int relay)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, GPIO_PIN_1);
-    GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_4, 0);
+    if (relay == 1 || relay == 0){
+		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, GPIO_PIN_1);	// Rel1
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_4, 0);			// Rel1N
+	}
+	if (relay == 2 || relay == 0){
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_3, GPIO_PIN_3);	// Rel2
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_5, 0);			// Rel2N
+	}
+	if (relay == 3 || relay == 0){
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_2, GPIO_PIN_2);	// Rel3
+		GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_5, 0);			// Rel3N
+	}
+	if (relay == 4 || relay == 0){
+		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_PIN_4);	// Rel4
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_1, 0);			// Rel4N
+	}
 }
 
 // Turn off the relay(s)
 void off(int relay)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0);
-    GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_4, GPIO_PIN_4);
+    if (relay == 1 || relay == 0){
+		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0);			// Rel1
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_4, GPIO_PIN_4);	// Rel1N
+	}
+	if (relay == 2 || relay == 0){
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_3, 0);			// Rel2
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_5, GPIO_PIN_5);	// Rel2N
+	}
+	if (relay == 3 || relay == 0){
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_2, 0);			// Rel3
+		GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_5, GPIO_PIN_5);	// Rel3N
+	}
+	if (relay == 4 || relay == 0){
+		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, 0);			// Rel4
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_1, GPIO_PIN_1);	// Rel4N
+	}
 }
 
 // Clear received buffer (I don't know what this is for, but it looks important)
-void clear(void){
+/*void clear(void){
     for(j=0; j<i; j++)
         ptr[j]=0;
-}
+}*/
 
 // CONSOLE UART interrupt handler.
 void
@@ -159,18 +195,28 @@ UARTIntHandler1(void)
 		var = (unsigned char)ROM_UARTCharGetNonBlocking(UART1_BASE);
 		ptr[i] = var;	
 		ROM_UARTCharPutNonBlocking(UART0_BASE, ptr[i]);
+
+		// See if this is a new message flag - notifier looks like: +CMTI: "SM",12
+		// where 12 is the number of unread messages
+		if(ptr[i-3] == 'C' && ptr[i-2] == 'M' && ptr[i-1] == 'T'&& ptr[i] == 'I'){
+			//msgCountStr[1] = ptr[i];
+			//msgCountStr[2] = ptr[i-1];
+			//sscanf(msgCountStr, "%d", &msgCount);
+			msgNotify++;
+		}
 		i++;
 	}
 	
 	// If we're in "talk to GSM" mode, we don't want this interrupt to continue
-	if( talk_mode == true ){return;}
+	// (I don't think we need this, going to test without it for a while.)
+	// if( talk_mode == true ){return;}
 }
 
 // Find out if the GSM module is on
 bool GSMpower (void)
 {
 	// Delay for a bit, then make sure the flag is ON (something seems to trigger the interrupt when I'm setting it up)
-	for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}
+	for(ui32Loop = 0; ui32Loop < 990000; ui32Loop++){}
 	GSM_off = true;
 	// Then, send an AT to the GSM module - if it triggers the interrupt, we know the GSM is on
 	UART1printf("AT\r");
@@ -180,8 +226,8 @@ bool GSMpower (void)
 	return true;
 }
 
-// Cycle power to the GSM module
-void GSMpowerCycle( void )
+// Toggle power to the GSM module
+void GSMpowerToggle( void )
 {     
 	//GSM_RESET is active low. Keep this on all the time
 	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_6, 0);
@@ -193,9 +239,10 @@ void GSMpowerCycle( void )
 	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_7, GPIO_PIN_7);
 	for(ui32Loop = 0; ui32Loop < 10000000; ui32Loop++){}	//3 second delay
 	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_7, 0);			//PWRKEY de-asserted
-	UART0printf("\n\r--- (step 2 of 2) GSM power key cycled...\n\r");
+	UART0printf("\n\r--- (step 2 of 2) GSM power key toggled...\n\r");
 	
-	if (GSMpower() == true ){ UART0printf("\n\r--- GSM power ON!\n\r"); }
+	// This part doesn't work. Only ever says off.
+	if (GSMpower()){ UART0printf("\n\r--- GSM power ON!\n\r"); }
 	else { UART0printf("\n\r--- GSM power OFF!\n\r"); }
 }
 
@@ -268,7 +315,7 @@ SysTickIntHandler(void)
         {
 			blink(3,200000,1);
 			UART0printf("> [Right button] Cycling power to GSM.\n\r");
-			GSMpowerCycle();
+			GSMpowerToggle();
         }
         break;
 
@@ -285,7 +332,7 @@ SysTickIntHandler(void)
     }
 }
 
-// Get the date/time from the GSM module
+// Get the date/time from the GSM module. This breaks down right after power on. Need to improve.
 void checktime(void)
 {
  	bool timeunknown = true;
@@ -346,7 +393,7 @@ main(void)
 	ROM_FPUEnable();
 	ROM_FPULazyStackingEnable();
 	ROM_SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |    SYSCTL_XTAL_16MHZ);
-	ROM_IntMasterEnable();                                        // Enable processor interrupts.
+	ROM_IntMasterEnable();                                      // Enable processor interrupts.
     
 	// Enable peripherals
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);            //UART 0 pins
@@ -356,19 +403,27 @@ main(void)
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);            //Turn on UART0 module on chip for debugging (PuTTY)
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);            //For GSM module
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);			//enable EEPROM: 2048bytes in 32 blocks
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);            //Neopixel
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTC_BASE, GPIO_PIN_4);     //Neopixel
     
 	// Set pins as GPIO outputs
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_5);        //Rel3N
 	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_6);        //GSM PWRKEY
 	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_7);        //GSM RESET
-	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_4);        //Rel1n
-	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);	//RGB LED
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_1);        //Rel4
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_2);        //Rel3
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_3);        //Rel2
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_4);        //Rel1N
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_5);        //Rel2N
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);	//RGB LED (pin 1 also Rel1?)
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_4);        //Rel4N
 	LEDmap = RD_LED+BL_LED+GN_LED;													//Defines an RGB LED mapping
 
 	// Turn on an LED to show we're working
 	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);
 
 	//Turn the relays off initially
-	off(1);
+	off(0);
 
 	// Set GPIO A0 and A1 as UART0 pins
 	GPIOPinConfigure(GPIO_PA0_U0RX);
@@ -400,10 +455,7 @@ main(void)
 	
 	// Find out if the GSM module is on - check three times
 	for (k=1; k<4; k++){
-		sprintf (printint, "%d", k);
-		UART0printf( "> Check " );
-		UART0printf( (const char *) printint);
-		UART0printf( " of 3...\r\n" );
+		UART0printf( "> Check %u of 3...\r\n", k );
 		if ( GSMpower() == true )
 		{
 			blink(5,300000,2);
@@ -413,10 +465,10 @@ main(void)
 		else
 		{
 			UART0printf("> GSM is OFF, turning on...\n\r");
-			GSMpowerCycle();
+			GSMpowerToggle();
 			
 			// Delay for a bit, check again. Keep this delay long enough for GSM to get the time.
-			for(ui32Loop = 0; ui32Loop < 2000000; ui32Loop++){}
+			for(ui32Loop = 0; ui32Loop < 3000000; ui32Loop++){}
 			UART1printf("AT\r");
 			if (GSM_off == true){ UART0printf("> Power on failed!\n\r"); }
 		}
@@ -432,25 +484,50 @@ main(void)
 	}
 
 	// Get the time from the GSM module and print to user (sometimes still hangs right after powering GSM)
-	UART0printf("> Getting date/time from the GSM module\n\r");
-	checktime();
-	blink(10,300000,2);
-	UART0printf("> Current time: %u/%u/%u, %u:%u:%u, %d \n\r",yy,mo,dd,hh,mm,ss,zz);
+	while (getthetime){
+		UART0printf("> Getting date/time from the GSM module\n\r");
+		checktime();
+		blink(10,300000,2);
+		UART0printf("> Current time: %u/%u/%u, %u:%u:%u, %d \n\r",yy,mo,dd,hh,mm,ss,zz);
+		
+		break;
+	}
 
-	// Store on-time, retrieve last on-time.
-	EEPROMInit();
-	struct eprom_timestamp eprom_writetime = {yy,mo,dd,hh,mm,ss,zz};
-	//Read from struct at EEPROM start from 0x0000
-	EEPROMRead((uint32_t *)&eprom_readtime, E2PROM_TEST_ADRES, sizeof(eprom_readtime));
-	UART0printf("> Last on-time: %u/%u/%u, %u:%u:%u, %d (EEPROM address: %u)\n\r", eprom_readtime.v1, eprom_readtime.v2, eprom_readtime.v3, eprom_readtime.v4, eprom_readtime.v5, eprom_readtime.v6, eprom_readtime.v7, E2PROM_TEST_ADRES);
-	//Write struct to EEPROM start from 0x0000
-	EEPROMProgram((uint32_t *)&eprom_writetime, E2PROM_TEST_ADRES, sizeof(eprom_writetime));
+	// Store on-time, retrieve last on-time. Don't run this each time 'cause EEPROM wears out.
+	while (EEPROM){
+		EEPROMInit();
+		struct eprom_timestamp eprom_writetime = {yy,mo,dd,hh,mm,ss,zz};
+		//Read from struct at EEPROM start from 0x0000
+		EEPROMRead((uint32_t *)&eprom_readtime, E2PROM_TEST_ADRES, sizeof(eprom_readtime));
+		UART0printf("> Last on-time: %u/%u/%u, %u:%u:%u, %d (EEPROM address: %u)\n\r", eprom_readtime.v1, eprom_readtime.v2, eprom_readtime.v3, eprom_readtime.v4, eprom_readtime.v5, eprom_readtime.v6, eprom_readtime.v7, E2PROM_TEST_ADRES);
+		//Write struct to EEPROM start from 0x0000
+		EEPROMProgram((uint32_t *)&eprom_writetime, E2PROM_TEST_ADRES, sizeof(eprom_writetime));
 	
-	// Some EEPROM functions
-	//esize = EEPROMSizeGet(); // Get EEPROM Size 
-	//UART0printf("E2> EEPROM Size %d bytes\n", e2size);
-	//eblock = EEPROMBlockCountGet(); // Get EEPROM Block Count
-	//UART0printf("E2> EEPROM Blok Count: %d\n", e2block);
+		// Some EEPROM functions
+		/*esize = EEPROMSizeGet(); // Get EEPROM Size 
+		UART0printf("E2> EEPROM Size %d bytes\n", e2size);
+		eblock = EEPROMBlockCountGet(); // Get EEPROM Block Count
+		UART0printf("E2> EEPROM Blok Count: %d\n", e2block);*/
+		
+		break;
+	}
+	
+	// Relay control testing - flash green when turning on, red for off. Go through relays 1 - 4.
+	while (relay) {
+		UART0printf("> RELAY TESTING:");
+		for(ui32Loop = 0; ui32Loop < 990000; ui32Loop++){}		// Delay for a bit
+		k = 1;
+		while (k <= 4){
+			UART0printf("\n\r> RELAY %u: ON...",k);
+			on(k);
+			blink(7,300000,3);
+			UART0printf("OFF");
+			off(k);
+			blink(7,300000,1);
+			k++;
+		}
+		break;
+	}
 		
 	// Initialize the SysTick interrupt to process buttons
 	ButtonsInit();
@@ -459,17 +536,21 @@ main(void)
 	SysTickIntEnable();
 	IntMasterEnable();
 	
-	UART0printf("> Setup complete! \n\r>>> RUNNING MAIN PROGRAM\n\r");
+	UART0printf("\n\r> Setup complete! \n\r>>> RUNNING MAIN PROGRAM\n\r");
 	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
 	GPIOPinWrite(GPIO_PORTF_BASE, GN_LED, GN_LED);
 	
-	// Tell the user about modes
-	UART0printf("> Press left button at any time to enter \"talk to GSM\"\n\r> mode, indicated by blue LED\n\r");
+	// Tell the user about buttons
+	UART0printf("> Press left button to enter \"talk to GSM\" mode (blue LED)\n\r");
+	UART0printf("> Press right button to toggle power to GSM module (red LED)\n\r");
 	
-	// Notify HoH that program is running
-	//sendsms("6084735467","HESP is running!");
-	//UARTSend1("AT+CMGD=1,4\r",12);  // delete stored msgs
-	
-	// Enter a never-ending while loop. Interrupts trigger everything else.
-	while(1){}
+	// Enter the main program. Interrupts trigger flags. Routines in this program constantly
+	// check the flags and run each time one of them changes. Need to write a function to check for new messages. When we power on, send AT+CMGR=[some integer] then increment the integer until there are no new messages. This is how we will process everything that came through while power was off. See what we should do with each message before doing anything. Then switch to "live" mode. We'll need some sort of "hold status" for each relay, and some sort of "live status." Will need to use EEPROM to store these values and the times. So EEPROM will have an address for each relay, with a last known status and a time at which that status was implemented.
+	while(1){
+		if (msgNotify > 0){
+			UART0printf("\n\r> There is(are) %u new message(s)!",msgNotify);
+			msgNotify--;
+			UART0printf("\n\r> Processed one message, %u message(s) remain",msgNotify);
+		}
+	}
 }
