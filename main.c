@@ -28,9 +28,10 @@
 #define GN_LED GPIO_PIN_3
 
 // Debug/testing functions:
-bool getthetime = false;	// Get on-time from GSM network
-bool EEPROM = false;		// Store the on-time and retrieve previous ontime from EEPROM
-bool relay = false;			// Cycle the relays on/off to test
+bool testEEPROM = false;	// Store the on-time and retrieve previous ontime from EEPROM
+bool testRelay = false;		// Cycle the relays on/off to test
+bool msgDelete = false;		// Delete messages during processing
+bool ctrlNotify = false;	// Text the controller when coming on-line
 
 // For driving buttons
 uint32_t ui32Buttons;
@@ -41,19 +42,20 @@ uint32_t ui32Data;
 static volatile uint32_t ui32HibModeEntryCount;
 
 // Global variables
-bool GSM_off = true;			// Flag to see if the GSM module is on/off
-bool talkMode = true;			// Mode for user to interface directly with GSM module
-int LEDhold;					// Holds status of RGB LED so it can be restored after blinking
-int LEDmap;						// Map of the RGB LED bits (works with LEDhold, ie store LEDhold to LEDmap)
-static char g_cInput[128];		// String input to a UART
+bool GSM_off = true;				// Flag to see if the GSM module is on/off
+bool talkMode = true;				// Mode for user to interface directly with GSM module
+int LEDhold;						// Holds status of RGB LED so it can be restored after blinking
+int LEDmap;							// Map of the RGB LED bits (works with LEDhold, ie store LEDhold to LEDmap)
+static char g_cInput[128];			// String input to a UART
 char *GSMresponse = NULL;			// Use to parse UART inputs
-volatile uint32_t ui32Loop;		// for time delays
+volatile uint32_t ui32Loop;			// for time delays
+char ctrlID[11] = "3158078555";		// Phone number of the controller
+char boardID[5] = "0001";			// ID of this board
 
 // Variables for processing messages
 const char newline[] = "\n";	// Newline character
 const char comma[] = ",";		// Comma character
 int msgOpen = 0;				// Keep track of which message we're processing
-
 char *msgSender = NULL;			// Message sender
 char *msgDate = NULL;			// Message date
 char *msgTime = NULL;			// Message time
@@ -85,10 +87,12 @@ struct eprom_timestamp
 struct eprom_timestamp eprom_readtime =  {0,0,0,0,0,0,0}; /* Read struct */
 
 // Generic variables
-int j,k;		// Generic counter
+int j,k;				// Generic counter
+char aString[2][128];	// Generic string
 
 // Checktime function writes to these variables for main program access
 int hh,mm,ss,dd,mo,yy,zz;
+char fullTimestamp[23] = "\0";
 
 // REQUIRED.
 #ifdef DEBUG
@@ -104,20 +108,23 @@ bool aCodeauth(char *incoming_number){
 }
 
 // Send an SMS
-/*void sendsms(char * recipient, char * body)
+void sendsms(char *recipient, char *body)
 {
-    char hold[2][128];
-	  strcpy (hold[1],"AT+CMGS=\"");
-    strcat (hold[1],recipient);
-    strcat (hold[1],"\"\r");
-    strcat (body,"\r");
-    UARTSend1( (const unsigned char *) hold[1],strlen(hold[1]));
-    SysCtlDelay(SysCtlClockGet() *0.5);
-    UARTSend1( (const unsigned char *) body,strlen(body));
-    SysCtlDelay(SysCtlClockGet() *0.5);
-    UARTSend1("\x1A",1);
-    SysCtlDelay(SysCtlClockGet() *0.5);
-}*/
+	bool msgSent = false;		// Flag for confirming message was sent
+	
+	UART1printf( "AT+CMGS=\"%s\"\r",recipient);
+	for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}
+	UART1printf( "%s\r", body );
+	for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}
+	UART1printf( "\x1A" );
+	while (msgSent == false){
+		UART1gets(g_cInput,sizeof(g_cInput));
+		if ( strstr(g_cInput,"OK") != '\0' ){ 
+			UART0printf ( "\n\r> Message sent" );
+			msgSent = true; 
+		}
+	}
+}
 
 // Turn on the relay(s)
 void on(int relay)
@@ -198,7 +205,7 @@ UARTIntHandler1(void)
 	ROM_UARTIntClear(UART1_BASE, ulStatus1);
 	
 	// When the interrupt is triggered, this means the GSM module is on.
-	if ( GSM_off == true ) { GSM_off = false; }
+	if ( GSM_off ) { GSM_off = false; }
 
 	while(ROM_UARTCharsAvail(UART1_BASE)){
 		var = (unsigned char)ROM_UARTCharGetNonBlocking(UART1_BASE);
@@ -215,7 +222,7 @@ UARTIntHandler1(void)
 				strncpy(msgCountStr,msgCountStr+7,3);
 				msgCountStr[3]='\0';
 				sscanf(msgCountStr, "%d", &msgCount);
-				UART0printf(">>> NEW MESSAGES: %u",msgCount);
+				UART0printf("\n\r>>> %u NEW MESSAGES",msgCount);
 			}
 		}
 		i++;
@@ -223,7 +230,7 @@ UARTIntHandler1(void)
 	
 	// If we're in "talk to GSM" mode, we don't want this interrupt to continue
 	// (I don't think we need this, going to test without it for a while.)
-	// if( talkMode == true ){return;}
+	// if( talkMode ){return;}
 }
 
 // Find out if the GSM module is on
@@ -236,7 +243,7 @@ bool GSMpower (void)
 	UART1printf("AT\r");
 	// Delay for a bit.
 	for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}
-	if (GSM_off == true) { return false; }
+	if ( GSM_off ) { return false; }
 	return true;
 }
 
@@ -246,18 +253,18 @@ void GSMpowerToggle( void )
 	//GSM_RESET is active low. Keep this on all the time
 	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_6, 0);
 	for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}
-	UART0printf("--- (step 1 of 2) GSM reset asserted...\n\r");
+	UART0printf("\n\r--- (step 1 of 2) GSM reset asserted...");
 
 	//PWRKEY should be 1 for at least 1 second to power on/off the SIM900 module
 	//(This pulls down actual SIM900 PWRKEY)
 	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_7, GPIO_PIN_7);
 	for(ui32Loop = 0; ui32Loop < 10000000; ui32Loop++){}	//3 second delay
 	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_7, 0);			//PWRKEY de-asserted
-	UART0printf("\n\r--- (step 2 of 2) GSM power key toggled...\n\r");
+	UART0printf("\n\r--- (step 2 of 2) GSM power key toggled...");
 	
 	// This part doesn't work. Only ever says off.
-	if (GSMpower()){ UART0printf("\n\r--- GSM power ON!\n\r"); }
-	else { UART0printf("\n\r--- GSM power OFF!\n\r"); }
+	if (GSMpower()){ UART0printf("\n\r--- GSM power ON!"); }
+	else { UART0printf("\n\r--- GSM power OFF!"); }
 }
 
 // Blink an LED: 1=red, 2=blue, 3=green
@@ -312,11 +319,11 @@ SysTickIntHandler(void)
 				LEDhold = GPIOPinRead(GPIO_PORTF_BASE, LEDmap);
 				GPIOPinWrite(GPIO_PORTF_BASE, LEDmap, 0);
 				GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);
-				UART0printf("\n\r> [Left button] Entering talk to GSM mode. Press left button to end.\n\r");
+				UART0printf("\n\r> [Left button] Entering talk to GSM mode. Press left button to end.");
 				talkMode = true;
 			}
 			else{
-				UART0printf("\n\r> [Left button] Returning to main program.\n\r");
+				UART0printf("\n\r> [Left button] Returning to main program.");
 				GPIOPinWrite(GPIO_PORTF_BASE, LEDmap, LEDhold);		//Restore LED status
 				talkMode = false;
 			}
@@ -328,7 +335,7 @@ SysTickIntHandler(void)
         if((ui32TickCounter % APP_BUTTON_POLL_DIVIDER) == 0)
         {
 			blink(3,200000,1);
-			UART0printf("\n\r> [Right button] Cycling power to GSM.\n\r");
+			UART0printf("\n\r> [Right button] Cycling power to GSM.");
 			GSMpowerToggle();
         }
         break;
@@ -337,7 +344,7 @@ SysTickIntHandler(void)
         // Both buttons for longer than debounce time
         if(ui32HibModeEntryCount < APP_HIB_BUTTON_DEBOUNCE)
         {
-			UART0printf("\n\r> [Both buttons] No action defined.\n\r");
+			UART0printf("\n\r> [Both buttons] No action defined.");
         }
         break;
 
@@ -349,53 +356,37 @@ SysTickIntHandler(void)
 // Get the date/time from the GSM module. This breaks down right after power on. Need to improve.
 void checktime(void)
 {
- 	bool timeunknown = true;
-	char *rawStamp = NULL;
-	char rawDate[20];
-	char timestamp[20];
-	char zonestamp[20];
-	char datestamp[20] = "20";
-	char datetimezone[30] = "20";
+	bool timeunknown = true;
+	char msgLine[10][75];
 	
-	k = 3;
-	while ( timeunknown == true && k != 0 )
-	{
-		// Poll GSM for the time
-		UART1printf("AT+CCLK?\r");
-		
-		// Wait for response
+	k = 1;
+	UART1printf("AT+CCLK?\r");
+	while (timeunknown){
+		// Grab a line, stop after new-line
 		UART1gets(g_cInput,sizeof(g_cInput));
-				
-		// Stop checking after new-line
-		GSMresponse = strtok(g_cInput,"\n");
-		
-		// Make sure it's the time
-		if ( strncmp(GSMresponse,"+CCLK: \"",8) == 0 )
-		{
-			// Parse for time. Given format: yy/MM/dd,hh:mm:ss±zz (zz is difference from GMT in quarter hours)
-			rawStamp = strtok(GSMresponse,"\"");
-			strncpy(rawStamp,rawStamp+8,20);
-			strncpy(rawDate,rawStamp,8);
-			strcat(datestamp,rawDate);
-			strcat(datetimezone,rawStamp);
-			datetimezone[22] = '\0';
-			strncpy(timestamp,rawStamp+9,8);
-			strncpy(zonestamp,rawStamp+17,3);
-			// Time values error checking EXPAND/IMPROVE: datestamp, timestamp, zonestamp
-			if ( strncmp(datestamp,"2000",4) != 0 ){ timeunknown = false; }
-			else { k--; }
-		}
+		GSMresponse = strtok(g_cInput,newline);
+		strcpy(msgLine[k], GSMresponse);
+		// If this line says OK we've got the whole message
+		if ( strncmp(msgLine[k],"OK",2) == 0 ){timeunknown = false;}
+		else { k++; }
 	}
 	
-	// Split to individual integers
-	sscanf(timestamp, "%d:%d:%d", &hh, &mm, &ss);
-	sscanf(datestamp, "%d/%d/%d", &yy, &mo, &dd);
-	if (strstr(zonestamp,"+")){
-		sscanf(zonestamp, "+%d", &zz);
-	}
-	else{
-		sscanf(zonestamp, "-%d", &zz);
-		zz = zz*-1;
+	j = 1;
+	while ( j < k-1 ){
+		// Find the time in the lines we get back
+		if ( strstr(msgLine[j],"+CCLK: \"") != '\0' ){
+			strncpy(fullTimestamp,msgLine[j]+8,20);
+			// Split to individual integers
+			if (strstr(fullTimestamp,"+")){
+				sscanf(fullTimestamp,"%d/%d/%d,%d:%d:%d+%d", &yy, &mo, &dd, &hh, &mm, &ss, &zz);
+			}
+			else{
+				sscanf(fullTimestamp,"%d/%d/%d,%d:%d:%d-%d", &yy, &mo, &dd, &hh, &mm, &ss, &zz);
+				zz = zz*-1;
+			}
+			yy = yy + 2000;
+		}
+		j++;
 	}
 }
 
@@ -408,32 +399,33 @@ void msgProcess( int activeMsg )
 	char *msgContent = NULL;	// Message content
 	char msgLine[10][75];		// One line of the message
 	
-	UART0printf("\n\r>>> PROCESSING MESSAGE: %u",activeMsg);
-	k = 1;
+	// FIRST: Request the message and get the lines of the response (includes envelope, nulls, SIM responses)
+	UART0printf("\n\r>>> PROCESSING MESSAGE %u",activeMsg);
+	k = 1;		// Counts up while getting the lines of the message
 	// Request the message
 	UART1printf("AT+CMGR=%u\r\n",activeMsg);
-	while (msgReading == true){
-		// Grab the first incoming line, stop after new-line
+	while (msgReading){
+		// Grab a line, stop after new-line
 		UART1gets(g_cInput,sizeof(g_cInput));
 		msgContent = strtok(g_cInput,newline);
 		strcpy(msgLine[k], msgContent);
-		// If this line says OK, and the last line was the get message command, this message is already deleted.
-		if ( strncmp(msgLine[k],"OK",2) == 0 && k < 5 ){
-			msgPresent = false;
-			UART0printf("\n\r> [MESSAGE DOESN'T EXIST]");
-			msgReading = false;
-		}
-		// If this line says OK, and the last line was null, we've got the whole message
-		else if ( strncmp(msgLine[k],"OK",2) == 0 && strlen(msgLine[k-1]) < 3 ){msgReading = false;}
+		// If this line says OK we've got the whole message
+		if ( strncmp(msgLine[k],"OK",2) == 0 ){msgReading = false;}
 		else { k++; }
 	}
 	// Delay for a bit, needed when processing multiple messages
 	for(ui32Loop = 0; ui32Loop < 100000; ui32Loop++){}
 	
+	// See if there's actually a message
+	if ( k < 5 ){
+		msgPresent = false;
+		UART0printf("... doesn't exist");
+	}
+	
+	// SECOND: Process message lines for envelope information, and to make the message into a string
 	msgContent = NULL;
-	msgEnvelope = NULL;
 	// Now we've got the whole message, so let's parse it
-	if (msgPresent == true){
+	if (msgPresent){
 		j = 1;
 		while ( j < k-1 ){
 			// Case for the envelope
@@ -453,8 +445,11 @@ void msgProcess( int activeMsg )
 				msgTime[8] = '\0';
 			}
 			// Case for message content
+			// If we already found the envelope, and the line's not blank...
 			else if ( msgEnvelope != NULL && msgLine[j] != NULL ){
+				// ... and we haven't found any content, this is the first message line.
 				if (msgContent == NULL) { msgContent = msgLine[j]; }
+				// ... otherwise, add a space and append this line.
 				else {
 					strcat(msgContent, " ");
 					strcat(msgContent, msgLine[j]);
@@ -462,8 +457,22 @@ void msgProcess( int activeMsg )
 			}
 			j++;
 		}
-		UART0printf("\n\r> ENVELOPE - from: %s on: %s at: %s",msgSender,msgDate,msgTime);
-		UART0printf("\n\r> FULL MESSAGE SAYS: %s",msgContent);
+		// Show the user what we found
+		UART0printf("\n\r> msgENV: from: %s on: %s at: %s",msgSender,msgDate,msgTime);
+		UART0printf("\n\r> msgTXT: %s",msgContent);
+		
+		// THIRD: delete the message, confirm it's gone
+		if ( msgDelete ){
+			UART1printf("AT+CMGD=%u\r\n",activeMsg);
+			while (msgPresent){
+				// Grab a line, check for OK
+				UART1gets(g_cInput,sizeof(g_cInput));
+				if ( strstr(g_cInput,"OK") != '\0' ){ 
+					UART0printf ( "\n\r> MSG %u deleted",activeMsg );
+					msgPresent = false; 
+				}
+			}
+		}
 	}
 }
 	
@@ -532,27 +541,27 @@ main(void)
 	ROM_UARTIntEnable(UART1_BASE, UART_INT_RX | UART_INT_RT);     
 
 	// Notify the user what's going on
-	UART0printf("\n\n\n\r>>> INITIALIZING\n\r");
-	UART0printf("> Checking to see if GSM is on...\n\r");
+	UART0printf("\n\n\n\r>>> INITIALIZING");
+	UART0printf("\n\r> Checking to see if GSM is on...");
 	
 	// Find out if the GSM module is on - check three times
 	for (k=1; k<4; k++){
-		UART0printf( "> Check %u of 3...\r\n", k );
-		if ( GSMpower() == true )
+		UART0printf( "\n\r> Check %u of 3...\n\r", k );
+		if ( GSMpower() )
 		{
 			blink(5,300000,2);
-			UART0printf("> GSM is ON.\n\r");
+			UART0printf("\n\r> GSM is ON.");
 			break;
 		}
 		else
 		{
-			UART0printf("> GSM is OFF, turning on...\n\r");
+			UART0printf("\n\r> GSM is OFF, turning on...");
 			GSMpowerToggle();
 			
 			// Delay for a bit, check again. Keep this delay long enough for GSM to get the time.
 			for(ui32Loop = 0; ui32Loop < 3000000; ui32Loop++){}
 			UART1printf("AT\r");
-			if (GSM_off == true){ UART0printf("> Power on failed!\n\r"); }
+			if (GSM_off){ UART0printf("\n\r> Power on failed!"); }
 		}
 	}
 
@@ -560,28 +569,23 @@ main(void)
 		GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
 		blink(10,300000,1);
 		GPIOPinWrite(GPIO_PORTF_BASE, RD_LED, RD_LED);
-		UART0printf("> Cannot power on the GSM!\n\r");
-		UART0printf(">>> ENDING PROGRAM\n\r");
+		UART0printf("\n\r> Cannot power on the GSM!");
+		UART0printf("\n\r>>> ENDING PROGRAM");
 		return 0;
 	}
 
 	// Get the time from the GSM module and print to user (sometimes still hangs right after powering GSM)
-	while (getthetime){
-		UART0printf("> Getting date/time from the GSM module\n\r");
-		checktime();
-		blink(10,300000,2);
-		UART0printf("> Current time: %u/%u/%u, %u:%u:%u, %d \n\r",yy,mo,dd,hh,mm,ss,zz);
-		
-		break;
-	}
+	UART0printf("\n\r> Getting date/time from the GSM module");
+	checktime();
+	UART0printf("\n\r> Timestamp: %s",fullTimestamp);
 
 	// Store on-time, retrieve last on-time. Don't run this each time 'cause EEPROM wears out.
-	while (EEPROM){
+	if (testEEPROM){
 		EEPROMInit();
 		struct eprom_timestamp eprom_writetime = {yy,mo,dd,hh,mm,ss,zz};
 		//Read from struct at EEPROM start from 0x0000
 		EEPROMRead((uint32_t *)&eprom_readtime, E2PROM_TEST_ADRES, sizeof(eprom_readtime));
-		UART0printf("> Last on-time: %u/%u/%u, %u:%u:%u, %d (EEPROM address: %u)\n\r", eprom_readtime.v1, eprom_readtime.v2, eprom_readtime.v3, eprom_readtime.v4, eprom_readtime.v5, eprom_readtime.v6, eprom_readtime.v7, E2PROM_TEST_ADRES);
+		UART0printf("\n\r> Last on-time: %u/%u/%u, %u:%u:%u, %d (EEPROM address: %u)", eprom_readtime.v1, eprom_readtime.v2, eprom_readtime.v3, eprom_readtime.v4, eprom_readtime.v5, eprom_readtime.v6, eprom_readtime.v7, E2PROM_TEST_ADRES);
 		//Write struct to EEPROM start from 0x0000
 		EEPROMProgram((uint32_t *)&eprom_writetime, E2PROM_TEST_ADRES, sizeof(eprom_writetime));
 	
@@ -590,13 +594,11 @@ main(void)
 		UART0printf("E2> EEPROM Size %d bytes\n", e2size);
 		eblock = EEPROMBlockCountGet(); // Get EEPROM Block Count
 		UART0printf("E2> EEPROM Blok Count: %d\n", e2block);*/
-		
-		break;
 	}
 	
 	// Relay control testing - flash green when turning on, red for off. Go through relays 1 - 4.
-	while (relay) {
-		UART0printf("> RELAY TESTING:");
+	if (testRelay) {
+		UART0printf("\n\r> RELAY TESTING:");
 		for(ui32Loop = 0; ui32Loop < 990000; ui32Loop++){}		// Delay for a bit
 		k = 1;
 		while (k <= 4){
@@ -608,7 +610,6 @@ main(void)
 			blink(7,300000,1);
 			k++;
 		}
-		break;
 	}
 		
 	// Initialize the SysTick interrupt to process buttons
@@ -618,21 +619,30 @@ main(void)
 	SysTickIntEnable();
 	IntMasterEnable();
 	
-	UART0printf("> Setup complete! \n\r>>> RUNNING MAIN PROGRAM\n\r");
+	UART0printf("\n\r> Setup complete! \n\r>>> RUNNING MAIN PROGRAM");
 	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
 	GPIOPinWrite(GPIO_PORTF_BASE, GN_LED, GN_LED);
 	
 	// Tell the user about buttons
-	talkMode = false;
-	UART0printf("> Press left button to enter \"talk to GSM\" mode (blue LED)\n\r");
-	UART0printf("> Press right button to toggle power to GSM module (red LED)\n\r");
+	UART0printf("\n\r> Press left button to enter \"talk to GSM\" mode (blue LED)");
+	UART0printf("\n\r> Press right button to toggle power to GSM module (red LED)");
+	talkMode = false;	// We were in talk mode during set-up to let SIM messages through
 	
-	// Enter the main program. Interrupts trigger flags. Routines in this program constantly check the flags and run each time one of them changes. Need to write a function to check for new messages. When we power on, send AT+CMGR=[some integer] then increment the integer until there are no new messages. This is how we will process everything that came through while power was off. See what we should do with each message before doing anything. Then switch to "live" mode. We'll need some sort of "hold status" for each relay, and some sort of "live status." Will need to use EEPROM to store these values and the times. So EEPROM will have an address for each relay, with a last known status and a time at which that status was implemented.
+	// Notify controller that we're online
+	if (ctrlNotify){
+		strcpy (aString[1],"HESP");
+		strcat (aString[1], boardID);
+		strcat (aString[1], " ON: ");
+		strcat (aString[1], fullTimestamp );
+		sendsms( ctrlID, aString[1] );
+	}
+	
 	while(1){
 		// Process new messages. Need to turn this into a function once it's working so we can process any messages that came in while power was off.
 		if (msgCount > 0){
 			msgOpen = msgCount;		// Keep track of the message we're working on, in case the count updates
 			msgCount--;
+			for(ui32Loop = 0; ui32Loop < 10000; ui32Loop++){}
 			msgProcess(msgOpen);
 		}
 	}
