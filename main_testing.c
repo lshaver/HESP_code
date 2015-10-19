@@ -303,7 +303,7 @@ int getResponse(void)
 		GSMresponse = strtok(g_cInput,newlineCh);
 		strcpy(responseLine[readLine], GSMresponse);
 		// If this line says OK we've got the whole message
-		if ( strncmp(responseLine[readLine],"OK",2) == 0 ){readResponse = false;}
+		if ( strncmp(responseLine[readLine],"OK",2) == 0 && strncmp(responseLine[readLine-1],newlineCh,4) == 0 ){readResponse = false;}
 		else { readLine++; }
 	}
 	return(readLine);
@@ -344,6 +344,7 @@ void checkTime(void)
 // PROCESS SMS FOR ENVELOPE AND CONTENT 
 // TO DO: 
 // 1. Figure out if it's OK to do this with pointers
+// 2. Stop ignoring messages of just "OK"
 //
 //*****************************************************************************
 void processMsg( int activeMsg )
@@ -360,60 +361,61 @@ void processMsg( int activeMsg )
 	// Delay for a bit, needed when processing multiple messages
 	for(ui32Loop = 0; ui32Loop < 100000; ui32Loop++){}
 	
+	// See if there's actually a message (there will be at least five lines - FIX THIS! IGNORES AN SMS OF "OK"
+	if ( k < 5 ){
+		msgPresent = false;
+		UART0printf("... doesn't exist");
+	}
+	
 	// SECOND: Process message lines for envelope information, and to make the message into a string
 	msgContent = NULL;
 	// Now we've got the whole message, so let's parse it
-	j = 1;
-	while ( j < k+1 ){
-		// If this line's the envelope, like +CMGR: "REC READ","+13158078555","","15/10/08,13:18:40-20"
-		if ( strstr(responseLine[j],"+CMGR:") != '\0' ){
-			// Parse the line for status, ph number, date, and time.
-			msgEnvelope = responseLine[j];
-			msgSender = strtok(msgEnvelope,commaCh);	// This way we skip status
-			msgSender = strtok(NULL,commaCh);
-			msgDate = strtok(NULL,commaCh);				// This way we skip phonebook entry
-			msgDate = strtok(NULL,commaCh);
-			msgTime = strtok(NULL,commaCh);
-			strncpy(msgSender,msgSender+2,11);			// Store the number
-			msgSender[11] = '\0';
-			strncpy(msgDate,msgDate+1,8);				// Store the date
-			msgDate[8] = '\0';
-			strncpy(msgTime,msgTime,8);					// Store the time
-			msgTime[8] = '\0';
-			msgPresent = true;							// If there's an envelope, there's a message
-		}
-		// Case for message content
-		// If we already found the envelope, and the line's not blank...
-		else if ( msgEnvelope != NULL && responseLine[j] != NULL ){
-			// ... and we haven't found any content, this is the first message line.
-			if (msgContent == NULL) { msgContent = responseLine[j]; }
-			// ... otherwise, add a space and append this line.
-			else if ( j + 2 <= k ) {
-				strcat(msgContent, " ");
-				strcat(msgContent, responseLine[j]);
+	if (msgPresent){
+		j = 1;
+		while ( j < k-1 ){
+			// Case for the envelope, like +CMGR: "REC READ","+13158078555","","15/10/08,13:18:40-20"
+			if ( strstr(responseLine[j],"+CMGR:") != '\0' ){
+				// Parse the line for status, ph number, date, and time.
+				msgEnvelope = responseLine[j];
+				msgSender = strtok(msgEnvelope,commaCh);	// This way we skip status
+				msgSender = strtok(NULL,commaCh);
+				msgDate = strtok(NULL,commaCh);				// This way we skip phonebook entry
+				msgDate = strtok(NULL,commaCh);
+				msgTime = strtok(NULL,commaCh);
+				strncpy(msgSender,msgSender+2,11);			// Store the number
+				msgSender[11] = '\0';
+				strncpy(msgDate,msgDate+1,8);				// Store the date
+				msgDate[8] = '\0';
+				strncpy(msgTime,msgTime,8);					// Store the time
+				msgTime[8] = '\0';
 			}
+			// Case for message content
+			// If we already found the envelope, and the line's not blank...
+			else if ( msgEnvelope != NULL && responseLine[j] != NULL ){
+				// ... and we haven't found any content, this is the first message line.
+				if (msgContent == NULL) { msgContent = responseLine[j]; }
+				// ... otherwise, add a space and append this line.
+				else {
+					strcat(msgContent, " ");
+					strcat(msgContent, responseLine[j]);
+				}
+			}
+			j++;
 		}
-		// If it's not the envelope, and the envelope is blank
-		else { msgPresent = false; }
-		j++;
-	}
-	
-	// Show the user what we found
-	if ( msgPresent ) {
+		// Show the user what we found
 		UART0printf("\n\r> msgENV: from: %s on: %s at: %s",msgSender,msgDate,msgTime);
 		UART0printf("\n\r> msgTXT: %s",msgContent);
-	}
-	else { UART0printf("... doesn't exist"); }
-	
-	// THIRD: delete the message, confirm it's gone
-	if ( msgDelete ){
-		UART1printf("AT+CMGD=%u\r\n",activeMsg);
-		while (msgPresent){
-			// Grab a line, check for OK
-			UART1gets(g_cInput,sizeof(g_cInput));
-			if ( strstr(g_cInput,"OK") != '\0' ){ 
-				UART0printf ( "\n\r> MSG %u deleted",activeMsg );
-				msgPresent = false; 
+		
+		// THIRD: delete the message, confirm it's gone
+		if ( msgDelete ){
+			UART1printf("AT+CMGD=%u\r\n",activeMsg);
+			while (msgPresent){
+				// Grab a line, check for OK
+				UART1gets(g_cInput,sizeof(g_cInput));
+				if ( strstr(g_cInput,"OK") != '\0' ){ 
+					UART0printf ( "\n\r> MSG %u deleted",activeMsg );
+					msgPresent = false; 
+				}
 			}
 		}
 	}
