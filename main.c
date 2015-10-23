@@ -1,5 +1,5 @@
 //!*****************************************************************************
-//! DEFINITIONS
+//! INCLUSIONS
 //!*****************************************************************************
 
 // These are included by the system and/or Anil.
@@ -31,18 +31,47 @@
 #include "inc/hw_i2c.h"
 //#include <stdarg.h>				// Not sure if needed
 
+//!*****************************************************************************
+//! DEFINITIONS
+//!*****************************************************************************
+
 // RGB LED pin definitions
 #define RD_LED GPIO_PIN_1
 #define BL_LED GPIO_PIN_2
 #define GN_LED GPIO_PIN_3
 
+// For driving buttons
+#define APP_SYSTICKS_PER_SEC		32
+#define APP_BUTTON_POLL_DIVIDER		8
+#define APP_HIB_BUTTON_DEBOUNCE		(APP_SYSTICKS_PER_SEC * 3)
+
+// EEPROM start address
+#define E2PROM_TEST_ADRES 0x0000
+
+// For touchpad
+#define K1 8
+#define K2 4
+#define K3 3
+#define K4 9
+#define K5 5
+#define K6 2
+#define K7 10
+#define K8 6
+#define K9 1
+#define K0 7
+#define KS 11
+#define KP 0
+#define TOU_THRESH 0x0F		// touch threshold
+#define REL_THRESH 0x09		// release threshold
+
 //!*****************************************************************************
 //! VARIABLES
 //!*****************************************************************************
 
-// Debug/testing functions:
-bool testEEPROM = false;			// Store the on-time and retrieve previous ontime from EEPROM
-bool testRelay = false;				// Cycle the relays on/off to test
+// TESTING VARIABLES: use these to disable code segments during testing
+bool useGSM = false;				// Turn on the GSM during boot
+bool testEEPROM = false;			// Store/retrieve ontime from EEPROM (requires useGSM)
+bool testRelay = false;				// Cycle the relays on/off to test (excluding 1 and 4 with current hw)
 bool msgDelete = false;				// Delete messages during processing
 bool ctrlNotify = false;			// Text the controller when coming on-line
 bool testI2C = true;				// I2C testing area
@@ -50,16 +79,13 @@ bool testI2C = true;				// I2C testing area
 // For driving buttons
 uint32_t ui32Buttons;
 uint32_t ui32Data;
-#define APP_SYSTICKS_PER_SEC		32
-#define APP_BUTTON_POLL_DIVIDER		8
-#define APP_HIB_BUTTON_DEBOUNCE		(APP_SYSTICKS_PER_SEC * 3)
 static volatile uint32_t ui32HibMMdeEntryCount;
 
 // Global variables
 bool GSMoff = true;					// Flag to see if the GSM module is on/off
 bool talkMode = true;				// MMde for user to interface directly with GSM module
 int LEDhold;						// Holds status of RGB LED so it can be restored after running functions
-int LEDmap = RD_LED+BL_LED+GN_LED;	// Map of the RGB LED bits (works with LEDhold, ie store LEDhold to LEDmap)
+int LEDmap = RD_LED+BL_LED+GN_LED;	// Map of RGB LED bits (works with LEDhold, ie store LEDhold to LEDmap)
 static char g_cInput[128];			// String input to a UART
 char *GSMresponse = NULL;			// Use to grab UART inputs
 char responseLine[10][75];			// Use to store UART inputs
@@ -67,9 +93,9 @@ volatile uint32_t ui32Loop;			// for time delays
 char ctrlID[11] = "3158078555";		// Phone number of the controller
 char boardID[5] = "0001";			// ID of this board
 
-// Variables for processing messages/ storing message info
-const char newlineCh[] = "\n";		// newlineCh character
-const char commaCh[] = ",";			// commaCh character
+// Variables for processing messages
+const char newlineCh[] = "\n";		// newline character
+const char commaCh[] = ",";			// comma character
 int msgOpen = 0;					// Keep track of which message we're processing
 // TO DO: do this without pointers, or make sure they're used correctly
 char *msgSender = NULL;				// Message sender
@@ -93,7 +119,6 @@ char fullTimestamp[23] = "\0";
 
 // For EEPROM
 // TO DO: Generalize these variables for EEPROM use
-#define E2PROM_TEST_ADRES 0x0000	// EEPROM start address
 uint32_t esize,eblock;				// EEPROM block size and block count
 struct eprom_timestamp				// Struct for writing timestamps to EEPROM
 {
@@ -107,6 +132,9 @@ struct eprom_timestamp				// Struct for writing timestamps to EEPROM
 }; 
 struct eprom_timestamp eprom_readtime =  {0,0,0,0,0,0,0}; /* Read struct */
 
+// For touchpad
+char pressedKey;		// For some reason, compiler says this is used outside the interrupt routine
+
 // REQUIRED (included by Anil - not sure what it's for or if it's needed)
 #ifdef DEBUG
 void
@@ -116,7 +144,7 @@ __error__(char *pcFilename, unsigned long ulLine)
 #endif
 
 //!*****************************************************************************
-//! GENERAL FUNCTIONS
+//! FUNCTIONS
 //!*****************************************************************************
 
 //*****************************************************************************
@@ -265,9 +293,9 @@ void blinkLED (int blinkCount, int blinkSpeed, char *LEDcolor)
 	blinkSpeed = blinkSpeed*100000;
 
 	for( m=blinkCount; m>=0; m--)
-    {
+	{
 		// Turn on the LED.
-	    if ( strstr(LEDcolor,"red") != NULL ) {GPIOPinWrite(GPIO_PORTF_BASE, RD_LED, RD_LED);}
+		if ( strstr(LEDcolor,"red") != NULL ) {GPIOPinWrite(GPIO_PORTF_BASE, RD_LED, RD_LED);}
 		else if ( strstr(LEDcolor,"blue") != NULL ) {GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);}
 		else if ( strstr(LEDcolor,"green") != NULL ) {GPIOPinWrite(GPIO_PORTF_BASE, GN_LED, GN_LED);}
 		
@@ -289,7 +317,6 @@ void blinkLED (int blinkCount, int blinkSpeed, char *LEDcolor)
 //*****************************************************************************
 //
 // STORE A GSM RESPONSE TO ARRAY responseLine[]
-// Testing to see if this will stop ignoring an SMS of just OK
 //
 //*****************************************************************************
 int getResponse(void)
@@ -393,7 +420,7 @@ void processMsg( int activeMsg )
 				strcat(msgContent, responseLine[j]);
 			}
 		}
-		// If it's not the envelope, and the envelope is blank
+		// If it's not the envelope, and the envelope is blank, this message doesn't exist
 		else { msgPresent = false; }
 		j++;
 	}
@@ -405,17 +432,11 @@ void processMsg( int activeMsg )
 	}
 	else { UART0printf("... doesn't exist"); }
 	
-	// THIRD: delete the message, confirm it's gone
-	if ( msgDelete ){
+	// THIRD: delete the message
+	if ( msgDelete && msgPresent ){
 		UART1printf("AT+CMGD=%u\r\n",activeMsg);
-		while (msgPresent){
-			// Grab a line, check for OK
-			UART1gets(g_cInput,sizeof(g_cInput));
-			if ( strstr(g_cInput,"OK") != '\0' ){ 
-				UART0printf ( "\n\r> MSG %u deleted",activeMsg );
-				msgPresent = false; 
-			}
-		}
+		k = getResponse();
+		UART0printf ( "\n\r> MSG %u deleted",activeMsg );
 	}
 }
 
@@ -452,7 +473,7 @@ void initI2C(void)
 //*****************************************************************************
 //
 // READ SPECIFIED REGISTER ON I2C SLAVE
-// Not yet tested. Not my code. From:
+// From:
 // https://eewiki.net/display/microcontroller/I2C+Communication+with+the+TI+Tiva+TM4C123GXL
 //
 //*****************************************************************************
@@ -488,7 +509,7 @@ uint32_t I2CReceive(uint32_t slave_addr, uint8_t reg)
 //*****************************************************************************
 //
 // WRITE TO SPECIFIED REGISTER ON I2C SLAVE
-// Not yet tested. Not my code. From:
+// From:
 // https://eewiki.net/display/microcontroller/I2C+Communication+with+the+TI+Tiva+TM4C123GXL
 //
 //*****************************************************************************
@@ -557,8 +578,56 @@ void I2CSend(uint8_t slave_addr, uint8_t num_of_args, ...)
     }
 }
 
+//*****************************************************************************
+//
+// INITIALIZE MPR121
+//
+//*****************************************************************************
+void initMPR121(void)
+{
+	I2CSend(0x5A,2,0x80, 0x63);			// Soft reset
+	
+	// Set thresholds and other control values
+	I2CSend(0x5A,2,0x2B, 0x01);			// MHD_R
+	I2CSend(0x5A,2,0x2C, 0x01);			// NHD_R
+	I2CSend(0x5A,2,0x2D, 0x00);			// NCL_R
+	I2CSend(0x5A,2,0x2E, 0x00);			// FDL_R
+	I2CSend(0x5A,2,0x2F, 0x01);			// MHD_F
+	I2CSend(0x5A,2,0x30, 0x01);			// NHD_F
+	I2CSend(0x5A,2,0x31, 0x7F);			// NCL_F
+	I2CSend(0x5A,2,0x32, 0x09);			// FDL_F
+	I2CSend(0x5A,2,0x41, TOU_THRESH);	// ELE0_T
+	I2CSend(0x5A,2,0X42, REL_THRESH);	// ELE0_R
+	I2CSend(0x5A,2,0x43, TOU_THRESH);	// ELE1_T
+	I2CSend(0x5A,2,0X44, REL_THRESH);	// ELE1_R
+	I2CSend(0x5A,2,0x45, TOU_THRESH);	// ELE2_T
+	I2CSend(0x5A,2,0X46, REL_THRESH);	// ELE2_R
+	I2CSend(0x5A,2,0x47, TOU_THRESH);	// ELE3_T
+	I2CSend(0x5A,2,0X48, REL_THRESH);	// ELE3_R
+	I2CSend(0x5A,2,0x49, TOU_THRESH);	// ELE4_T
+	I2CSend(0x5A,2,0X4A, REL_THRESH);	// ELE4_R
+	I2CSend(0x5A,2,0x4B, TOU_THRESH);	// ELE5_T
+	I2CSend(0x5A,2,0X4C, REL_THRESH);	// ELE5_R
+	I2CSend(0x5A,2,0x4D, TOU_THRESH);	// ELE6_T
+	I2CSend(0x5A,2,0X4E, REL_THRESH);	// ELE6_R
+	I2CSend(0x5A,2,0x4F, TOU_THRESH);	// ELE7_T
+	I2CSend(0x5A,2,0X50, REL_THRESH);	// ELE7_R
+	I2CSend(0x5A,2,0x51, TOU_THRESH);	// ELE8_T
+	I2CSend(0x5A,2,0X52, REL_THRESH);	// ELE8_R
+	I2CSend(0x5A,2,0x53, TOU_THRESH);	// ELE9_T
+	I2CSend(0x5A,2,0X54, REL_THRESH);	// ELE9_R
+	I2CSend(0x5A,2,0x55, TOU_THRESH);	// ELE10_T
+	I2CSend(0x5A,2,0X56, REL_THRESH);	// ELE10_R
+	I2CSend(0x5A,2,0x57, TOU_THRESH);	// ELE11_T
+	I2CSend(0x5A,2,0X58, REL_THRESH);	// ELE11_R
+	I2CSend(0x5A,2,0x5D, 0x04);			// FIL_CFG
+	
+	// Turn on all 12 electrodes and enter run mode
+	I2CSend(0x5A,2,0x5E, 0x0C);			// ELE_CFG
+}
+
 //!*****************************************************************************
-//! INTERRUPT FUNCTIONS
+//! INTERRUPT HANDLERS
 //!*****************************************************************************
 
 //*****************************************************************************
@@ -589,7 +658,7 @@ UARTIntHandler0(void)
 void
 UARTIntHandler1(void)
 {
-	char *msgCountStr;													// String with the number of new messages
+	char *msgCountStr;													// Number of new messages
 	
 	ulStatus1 = ROM_UARTIntStatus(UART1_BASE, true);					// Get the interrupt status.
 	ROM_UARTIntClear(UART1_BASE, ulStatus1);							// Clear the asserted interrupts.
@@ -598,7 +667,7 @@ UARTIntHandler1(void)
 	while(ROM_UARTCharsAvail(UART1_BASE)){
 		var = (unsigned char)ROM_UARTCharGetNonBlocking(UART1_BASE);	// Grab a character
 		ptr[i] = var;													// Hold it
-		if (talkMode){ROM_UARTCharPutNonBlocking(UART0_BASE, ptr[i]);}	// in "talk to GSM MMde," mirror to console
+		if (talkMode){ROM_UARTCharPutNonBlocking(UART0_BASE, ptr[i]);}	// Mirror to console in talk mode
 		// Otherwise, see if it's a new message notification, like +CMTI: "SM",12
 		else {
 			if(ptr[i-3] == 'C' && ptr[i-2] == 'M' && ptr[i-1] == 'T'&& ptr[i] == 'I'){
@@ -674,6 +743,51 @@ SysTickIntHandler(void)
     }
 }
 
+//*****************************************************************************
+//
+// MPR121 INTERRUPT HANDLER 
+// Interrupt is active low on PC7
+//
+//*****************************************************************************
+void
+MPR121IntHandler(void)
+{
+	int touchNumber;
+	uint32_t touchLSB, touchMSB;
+	uint16_t touchALL;
+	
+	// Get the status of the electrodes
+	touchLSB = I2CReceive(0x5A,0x00);
+	touchMSB = I2CReceive(0x5A,0x01);
+	touchALL = ((touchMSB << 8) | touchLSB);
+	
+	touchNumber = 0;
+	// Check how many electrodes were pressed
+	for (j=0; j<12; j++) { if ((touchALL & (1<<j))) { touchNumber++; } }
+	if (touchNumber == 1){
+		if (touchALL & (1<<K1)){ pressedKey = '1'; }
+		else if (touchALL & (1<<K2)) { pressedKey = '2'; }
+		else if (touchALL & (1<<K3)) { pressedKey = '3'; }
+		else if (touchALL & (1<<K4)) { pressedKey = '4'; }
+		else if (touchALL & (1<<K5)) { pressedKey = '5'; }
+		else if (touchALL & (1<<K6)) { pressedKey = '6'; }
+		else if (touchALL & (1<<K7)) { pressedKey = '7'; }
+		else if (touchALL & (1<<K8)) { pressedKey = '8'; }
+		else if (touchALL & (1<<K9)) { pressedKey = '9'; }
+		else if (touchALL & (1<<K0)) { pressedKey = '0'; }
+		else if (touchALL & (1<<KS)) { pressedKey = '*'; }
+		else if (touchALL & (1<<KP)) { pressedKey = '#'; }
+		// etc, etc
+		UART0printf("\n\r> %c",pressedKey);
+	}
+	//do nothing if more than one button is pressed, or if all are released
+	else if (touchNumber == 0){}
+	else {}
+	
+	// Clear the asserted interrupts.
+	GPIOIntClear(GPIO_PORTC_BASE, GPIO_PIN_7);
+}
+
 //!*****************************************************************************
 //! THE PROGRAM
 //!*****************************************************************************
@@ -688,15 +802,15 @@ main(void)
 	ROM_IntMasterEnable();										// Enable processor interrupts
     
 	// Enable peripherals (disable neopixel, relays one and four in current hardware version)
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);			// UART0
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);			// UART1, GSM pwr, GSM reset, Rel3N, I2C0SCL, I2C0SDA
-	//ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);			// Neopixel, keypad interrupt (INT2)
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);			// Rel1N, Rel2, Rel2N, Rel3, Rel4
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);			// RGB LED, Rel1, Rel4N
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);			// Pins: UART0 
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);			// Pins: UART1, GSM pwr, GSM reset, Rel3N, I2C0SCL, I2C0SDA
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);			// Pins: Neopixel, keypad interrupt (INT2)
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);			// Pins: Rel1N, Rel2, Rel2N, Rel3, Rel4
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);			// Pins: RGB LED, Rel1, Rel4N
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);			// Console UART
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);			// GSM UART
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);			// Enable EEPROM: 2048bytes in 32 blocks
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_I2C0);				// Enable I2C
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);			// EEPROM (2048 bytes in 32 blocks)
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_I2C0);				// I2C
     
 	// Set pins as GPIO outputs (disable neopixel, relays one and four in current hardware version)
 	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_5);							//Rel3N
@@ -732,39 +846,57 @@ main(void)
 
 	// Notify the user what's going on
 	UART0printf("\n\n\n\r>>> INITIALIZING ");
-	UART0printf("\n\r> Checking to see if GSM is on...");
 	
-	// Find out if the GSM module is on - check three times
-	for (k=1; k<4; k++){
-		UART0printf( "\n\r> Check %u of 3...\n\r", k );
-		if ( checkGSMpwr() )
-		{
-			blinkLED(5,3,"blue");
-			UART0printf("\n\r> GSM is ON.");
-			break;
+	// Notify the user what's active
+	UART0printf("\n\r> Testing function status:\n\r--------------------------------");
+	if (useGSM) { UART0printf("\n\r> ENABLED : GSM power at boot"); }
+	else {UART0printf("\n\r> DISABLED: GSM power at boot");}
+	if (testEEPROM) { UART0printf("\n\r> ENABLED : Store/retrieve ontime from EEPROM"); }
+	else {UART0printf("\n\r> DISABLED: Store/retrieve ontime from EEPROM");}
+	if (testRelay) { UART0printf("\n\r> ENABLED : Cycle relays on/off"); }
+	else {UART0printf("\n\r> DISABLED: Cycle relays on/off");}
+	if (msgDelete) { UART0printf("\n\r> ENABLED : Delete messages during processing"); }
+	else {UART0printf("\n\r> DISABLED: Delete messages during processing");}
+	if (ctrlNotify) { UART0printf("\n\r> ENABLED : Message controller at boot"); }
+	else {UART0printf("\n\r> DISABLED: Message controller at boot");}
+	if (testI2C) { UART0printf("\n\r> ENABLED : Activate touchpad"); }
+	else {UART0printf("\n\r> DISABLED: Activate touchpad");}
+	UART0printf("\n\r--------------------------------");
+	
+	if (useGSM){
+		UART0printf("\n\r> Checking to see if GSM is on...");
+		// Find out if the GSM module is on - check three times
+		for (k=1; k<4; k++){
+			UART0printf( "\n\r> Check %u of 3...\n\r", k );
+			if ( checkGSMpwr() )
+			{
+				blinkLED(5,3,"blue");
+				UART0printf("\n\r> GSM is ON.");
+				break;
+			}
+			else
+			{
+				UART0printf("\n\r> GSM is OFF, turning on...");
+				toggleGSMpwr();
+				// Delay for a bit, check again. Keep this delay long enough for GSM to get the time.
+				for(ui32Loop = 0; ui32Loop < 3000000; ui32Loop++){}
+				UART1printf("AT\r");
+				if (GSMoff){ UART0printf("\n\r> Power on failed!"); }
+			}
 		}
-		else
-		{
-			UART0printf("\n\r> GSM is OFF, turning on...");
-			toggleGSMpwr();
-			// Delay for a bit, check again. Keep this delay long enough for GSM to get the time.
-			for(ui32Loop = 0; ui32Loop < 3000000; ui32Loop++){}
-			UART1printf("AT\r");
-			if (GSMoff){ UART0printf("\n\r> Power on failed!"); }
+		if ( k == 4 ){
+			GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
+			blinkLED(10,3,"red");
+			GPIOPinWrite(GPIO_PORTF_BASE, RD_LED, RD_LED);
+			UART0printf("\n\r> Cannot power on the GSM! \n\r>>> ENDING PROGRAM");
+			return 0;
 		}
-	}
-	if ( k == 4 ){
-		GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
-		blinkLED(10,3,"red");
-		GPIOPinWrite(GPIO_PORTF_BASE, RD_LED, RD_LED);
-		UART0printf("\n\r> Cannot power on the GSM! \n\r>>> ENDING PROGRAM");
-		return 0;
-	}
 
-	// Get the time from the GSM module and print to user
-	UART0printf("\n\r> Getting date/time from the GSM module");
-	checkTime();
-	UART0printf("\n\r> Timestamp: %s",fullTimestamp);
+		// Get the time from the GSM module and print to user
+		UART0printf("\n\r> Getting date/time from the GSM module");
+		checkTime();
+		UART0printf("\n\r> Timestamp: %s",fullTimestamp);
+	}
 
 	// EEPROM TESTING AREA: Store on-time, retrieve last on-time. Don't run this each time 'cause EEPROM wears out.
 	if (testEEPROM){
@@ -801,8 +933,25 @@ main(void)
 	ButtonsInit();
 	SysTickPeriodSet(SysCtlClockGet() / APP_SYSTICKS_PER_SEC);
 	SysTickEnable();
-	SysTickIntEnable();
 	IntMasterEnable();
+	
+	// Start I2C / MPR121 and interrupt
+	if (testI2C){
+		// Start I2C module
+		initI2C();
+
+		// Enable the I2C interrupt
+		GPIOPinTypeGPIOInput(GPIO_PORTC_BASE, GPIO_PIN_7);				// Set pin C7 as input
+		GPIOPadConfigSet(GPIO_PORTC_BASE, GPIO_PIN_7, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);	// Pullup
+		GPIOIntDisable(GPIO_PORTC_BASE, GPIO_PIN_7);					// Disable interrupt for PC7
+		GPIOIntClear(GPIO_PORTC_BASE, GPIO_PIN_7);						// Clear pending interrupts for PC7
+		GPIOIntRegister(GPIO_PORTC_BASE, MPR121IntHandler);				// Register port C interrupt handler
+		GPIOIntTypeSet(GPIO_PORTC_BASE, GPIO_PIN_7, GPIO_LOW_LEVEL);	// Configure PC7 for falling edge
+		GPIOIntEnable(GPIO_PORTC_BASE, GPIO_PIN_7); 					// Enable interrupt
+		
+		// Start the MPR121 and set thresholds
+		initMPR121();
+	}
 	
 	// Setup complete!
 	UART0printf("\n\r> Setup complete! \n\r>>> RUNNING MAIN PROGRAM");
@@ -823,18 +972,15 @@ main(void)
 		sendSMS( ctrlID, aString[1] );
 	}
 	
-	// I2C TESTING AREA
-	if (testI2C){
-		initI2C();
-	}
-	
 	while(1){
 		// Process new messages.
 		if (msgCount > 0){
-			msgOpen = msgCount;									// Keep track of the message we're working on, in case the count updates
+			msgOpen = msgCount;				// Keep track of the message we're working on, in case the count updates
 			msgCount--;
-			for(ui32Loop = 0; ui32Loop < 10000; ui32Loop++){}	// Delay to let each message get printed to UART before going to the next
-			processMsg(msgOpen);
+			// Delay to let each message get printed to UART before going to the next
+			for(ui32Loop = 0; ui32Loop < 10000; ui32Loop++){}
+			processMsg(msgOpen);			// Process message for envelope and content
+			// Now what?
 		}
 	}
 }
