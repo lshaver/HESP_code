@@ -17,24 +17,23 @@
 #include "driverlib/uart.h"
 
 // Lee added these
-#include "uart0stdio.h"				// Console
-#include "uart1stdio.h"				// GSM
-#include "string.h"
-#include "stdio.h"
+#include <inttypes.h>
 #include <stdlib.h>
 #include "buttons.h"
-#include "driverlib/systick.h"
+#include "stdio.h"
+#include "string.h"
+#include "uart0stdio.h"		// Console
+#include "uart1stdio.h"		// GSM
+#include "driverlib/adc.h"
 #include "driverlib/eeprom.h"
-#include "inc/hw_types.h"
-#include "inc/hw_gpio.h"
 #include "driverlib/i2c.h"
-#include "inc/hw_i2c.h"
-#include "driverlib/timer.h"
 #include "driverlib/ssi.h"
+#include "driverlib/systick.h"
+#include "driverlib/timer.h"
+#include "inc/hw_gpio.h"
+#include "inc/hw_i2c.h"
+#include "inc/hw_types.h"
 #include "inc/hw_ssi.h"
-#include <inttypes.h>
-#include "font_6x8.h"				// Small fonts for LCD
-#include "font_8x16.h"				// Large fonts for LCD
 
 //!*****************************************************************************
 //! DEFINITIONS
@@ -75,9 +74,10 @@
 #define YPIXEL			64
 #define XMAX			XPIXEL-1
 #define YMAX			YPIXEL-1
-#define DELETE			0
-#define ADD				1
-#define INVERS			2
+#define LCD_CMD			0
+#define LCD_DATA		1
+#define NORMAL			1
+#define INVERSE			2
 
 // Interrupt handlers
 void UARTIntHandler0(void);
@@ -88,7 +88,7 @@ void KeyPressTimer0IntHandler(void);
 void SysTickIntHandler(void);
 
 // Functions
-void blinkLED (int blinkCount, int blinkSpeed, int LEDcolor);
+void blinkLED (int blinkCount, int blinkSpeed, uint8_t LEDcolor);
 /// -- Relay handling
 void relayOn(int relayNum);
 void relayOff(int relayNum);
@@ -111,10 +111,11 @@ void initSSI3(void);
 void SSI3sendByte(uint32_t theData);
 void initLCD(void);
 void LCDsend(uint32_t theData, uint8_t cmdByte);
+void LCDsetAddress(uint32_t page, uint32_t column);
 void LCDclear(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye);
 void LCDfill(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye);
-void LCDchar(uint8_t x, uint8_t y, uint8_t data, uint8_t *font, uint8_t linkmode);
-void LCDstring(uint8_t x, uint8_t y, char *data, uint8_t *font, uint8_t linkmode);
+void LCDchar(uint8_t row, uint8_t col, uint16_t f, uint8_t style);
+void LCDstring(uint8_t row, uint8_t col, char *word, uint8_t style);
 void LCDline(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye);
 void LCDrect(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye);
 
@@ -124,12 +125,13 @@ void LCDrect(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye);
 
 // TESTING VARIABLES: use these to disable code segments during testing
 bool testGSM =		0;				// Turn on the GSM during boot
-bool testEEPROM =	0;				// Store/retrieve ontime from EEPROM (requires testGSM)
-bool testRelay =	0;				// Cycle the relays on/off to test (excluding 1 and 4 with current hw)
+bool testEEPROM =	0;				// Store/retrieve ontime from EEPROM 
+									// (requires testGSM)
+bool testRelay =	0;				// Cycle the relays on/off (exclude 1 and 4)
 bool testDelete =	0;				// Delete messages during processing
 bool testNotify =	0;				// Text the controller when coming on-line
 bool testI2C =		1;				// I2C testing area
-bool testLCD =		1;				// EA DOGS102W6 LCD display testing area
+bool testADC =		1;				// Analog to Digital converter
 
 // Identifying constants
 char ctrlID[11] = "3158078555";		// Phone number of the controller
@@ -137,12 +139,12 @@ char boardID[5] = "0001";			// ID of this board
 
 // Status holders across functions
 bool GSMoff =		true;			// Flag to see if the GSM module is on/off
-bool talkMode =		true;			// Mode for user to interface directly with GSM module
+bool talkMode =		true;			// Allow user to interface directly with GSM
 int buttonLEDhold;					// Holds status of RGB LED
 bool relayStatus[4];				// store the status of the relays
-int msgCount =		0;				// Hold the integer value with number of new messages
+int msgCount =		0;				// Hold the int value w/count of new messages
 char pressedKey;					// Keypad: store which key was last pressed
-bool keysUnlocked =	true;			// For locking the keypad
+bool keysUnlocked =	false;			// For locking the keypad
 uint16_t touchedMap;				// Map of key status
 
 // Used by UART interrupt handlers
@@ -160,7 +162,8 @@ char *msgDate =		NULL;			// Message date
 char *msgTime =		NULL;			// Message time
 
 // GSMcheckTime function writes to these variables for main program access
-int hh,mm,ss,DD,MM,YY,zz;			// Hour, minute, second, day, month, year, time zone (offset from GMT in quarter hours)
+int hh,mm,ss,DD,MM,YY,zz;			// Hour, minute, second, day, month, year, 
+									// time zone (offset from GMT in 1/4 hours)
 char fullTimestamp[23] = "\0";		// Complete timestamp
 
 // For EEPROM
@@ -178,9 +181,114 @@ struct eprom_timestamp				// Struct for writing timestamps to EEPROM
 }; 
 struct eprom_timestamp eprom_readtime =  {0,0,0,0,0,0,0}; /* Read struct */
 
-// For LCD
-unsigned char LCDbuffer[XPIXEL][YPIXEL/8];
-int countTx = 0;
+// For keypad
+int curCol=XPIXEL;						// Current column in LCD
+
+// For LCD: Font lookup table
+static const uint8_t FONT6x8[] = {
+    /* 6x8 font, each line is a character each byte is a one pixel wide column
+     * of that character. MSB is the top pixel of the column, LSB is the bottom
+     * pixel of the column. 0 = pixel off. 1 = pixel on. */
+
+		0,  0,  0,  0,  0,  0,
+		0,  0, 95,  0,  0,  0,
+		0,  7,  0,  7,  0,  0,
+	   20,127, 20,127, 20,  0,
+	   36, 42,127, 42, 18,  0,
+	   35, 19,  8,100, 98,  0,
+	   54, 73, 86, 32, 80,  0,
+		0,  8,  7,  3,  0,  0,
+		0, 28, 34, 65,  0,  0,
+		0, 65, 34, 28,  0,  0,
+	   42, 28,127, 28, 42,  0,
+		8,  8, 62,  8,  8,  0,
+		0,128,112, 48,  0,  0,
+		8,  8,  8,  8,  8,  0,
+		0,  0, 96, 96,  0,  0,
+	   32, 16,  8,  4,  2,  0,
+	   62, 81, 73, 69, 62,  0,
+		0, 66,127, 64,  0,  0,
+	   66, 97, 81, 73, 70,  0,
+	   33, 65, 73, 77, 51,  0,
+	   24, 20, 18,127, 16,  0,
+	   39, 69, 69, 69, 57,  0,
+	   60, 74, 73, 73, 48,  0,
+	   65, 33, 17,  9,  7,  0,
+	   54, 73, 73, 73, 54,  0,
+		6, 73, 73, 41, 30,  0,
+		0,  0, 20,  0,  0,  0,
+		0, 64, 52,  0,  0,  0,
+		0,  8, 20, 34, 65,  0,
+	   20, 20, 20, 20, 20,  0,
+		0, 65, 34, 20,  8,  0,
+		2,  1, 81,  9,  6,  0,
+	   62, 65, 93, 89, 78,  0,
+	  124, 18, 17, 18,124,  0,
+	  127, 73, 73, 73, 54,  0,
+	   62, 65, 65, 65, 34,  0,
+	  127, 65, 65, 65, 62,  0,
+	  127, 73, 73, 73, 65,  0,
+	  127,  9,  9,  9,  1,  0,
+	   62, 65, 73, 73,122,  0,
+	  127,  8,  8,  8,127,  0,
+		0, 65,127, 65,  0,  0,
+	   32, 64, 65, 63,  1,  0,
+	  127,  8, 20, 34, 65,  0,
+	  127, 64, 64, 64, 64,  0,
+	  127,  2, 28,  2,127,  0,
+	  127,  4,  8, 16,127,  0,
+	   62, 65, 65, 65, 62,  0,
+	  127,  9,  9,  9,  6,  0,
+	   62, 65, 81, 33, 94,  0,
+	  127,  9, 25, 41, 70,  0,
+	   38, 73, 73, 73, 50,  0,
+		1,  1,127,  1,  1,  0,
+	   63, 64, 64, 64, 63,  0,
+	   31, 32, 64, 32, 31,  0,
+	   63, 64, 56, 64, 63,  0,
+	   99, 20,  8, 20, 99,  0,
+		3,  4,120,  4,  3,  0,
+	   97, 81, 73, 69, 67,  0,
+		0,127, 65, 65, 65,  0,
+		2,  4,  8, 16, 32,  0,
+		0, 65, 65, 65,127,  0,
+		4,  2,  1,  2,  4,  0,
+	   64, 64, 64, 64, 64,  0,
+		0,  3,  7,  8,  0,  0,
+	   32, 84, 84, 84,120,  0,
+	  127, 40, 68, 68, 56,  0,
+	   56, 68, 68, 68, 40,  0,
+	   56, 68, 68, 40,127,  0,
+	   56, 84, 84, 84, 24,  0,
+		0,  8,126,  9,  2,  0,
+	   24,164,164,164,124,  0,
+	  127,  8,  4,  4,120,  0,
+		0, 68,125, 64,  0,  0,
+	   32, 64, 64, 61,  0,  0,
+	  127, 16, 40, 68,  0,  0,
+		0, 65,127, 64,  0,  0,
+	  124,  4,120,  4,120,  0,
+	  124,  8,  4,  4,120,  0,
+	   56, 68, 68, 68, 56,  0,
+	  252, 24, 36, 36, 24,  0,
+	   24, 36, 36, 24,252,  0,
+	  124,  8,  4,  4,  8,  0,
+	   72, 84, 84, 84, 36,  0,
+		4,  4, 63, 68, 36,  0,
+	   60, 64, 64, 32,124,  0,
+	   28, 32, 64, 32, 28,  0,
+	   60, 64, 48, 64, 60,  0,
+	   68, 40, 16, 40, 68,  0,
+	   76,144,144,144,124,  0,
+	   68,100, 84, 76, 68,  0,
+		0,  8, 54, 65,  0,  0,
+		0,  0,119,  0,  0,  0,
+		0, 65, 54,  8,  0,  0,
+		2,  1,  2,  4,  2,  0,
+	   60, 38, 35, 38, 60,  0,
+	   30,161,161, 97, 18,  0,
+	   58, 64, 64, 32,122,  0
+};
 
 //!*****************************************************************************
 //! ERROR HANDLER
@@ -206,15 +314,21 @@ __error__(char *pcFilename, unsigned long ulLine)
 void
 UARTIntHandler0(void)
 {
-	ulStatus0 = ROM_UARTIntStatus(UART0_BASE, true);					// Get the interrupt status.
-	ROM_UARTIntClear(UART0_BASE, ulStatus0);							// Clear the asserted interrupts.
+	// Get the interrupt status.
+	ulStatus0 = ROM_UARTIntStatus(UART0_BASE, true);
+	// Clear the asserted interrupts
+	ROM_UARTIntClear(UART0_BASE, ulStatus0);
 	// Loop while there are characters in the receive FIFO.
 	while(ROM_UARTCharsAvail(UART0_BASE))
 	{
-		var = (unsigned char)ROM_UARTCharGetNonBlocking(UART0_BASE);	// Grab a character
-		ptr[i] = var;													// Hold it
-		ROM_UARTCharPutNonBlocking(UART1_BASE, ptr[i]);					// Mirror it to GSM
-		i++;															// Proceed to next character
+		// Grab a character
+		var = (unsigned char)ROM_UARTCharGetNonBlocking(UART0_BASE);
+		// Hold it
+		ptr[i] = var;
+		// Mirror it to GSM
+		ROM_UARTCharPutNonBlocking(UART1_BASE, ptr[i]);
+		// Proceed to next character
+		i++;
 	}
 }
 
@@ -226,35 +340,44 @@ UARTIntHandler0(void)
 void
 UARTIntHandler1(void)
 {
-	char *msgCountStr;													// Number of new messages
-	static char g_cInput[128];											// String input to a UART
+	char *msgCountStr;					// Number of new messages
+	static char g_cInput[128];			// String input to a UART
 	
-	ulStatus1 = ROM_UARTIntStatus(UART1_BASE, true);					// Get the interrupt status.
-	ROM_UARTIntClear(UART1_BASE, ulStatus1);							// Clear the asserted interrupts.
-	if ( GSMoff ) { GSMoff = false; }									// Interrupt trigger means the GSM module is on.
+	// Get the interrupt status.
+	ulStatus1 = ROM_UARTIntStatus(UART1_BASE, true);
+	// Clear the asserted interrupts.
+	ROM_UARTIntClear(UART1_BASE, ulStatus1);
+	
+	if ( GSMoff ) { GSMoff = false; }	// Interrupt trigger means GSM is on.
 	// Loop while there are characters in the receive FIFO.
 	while(ROM_UARTCharsAvail(UART1_BASE)){
-		var = (unsigned char)ROM_UARTCharGetNonBlocking(UART1_BASE);	// Grab a character
-		ptr[i] = var;													// Hold it
-		if (talkMode){ROM_UARTCharPutNonBlocking(UART0_BASE, ptr[i]);}	// Mirror to console in talk mode
-		// Otherwise, see if it's a new message notification, like +CMTI: "SM",12
+		// Grab a character
+		var = (unsigned char)ROM_UARTCharGetNonBlocking(UART1_BASE);
+		// Hold it
+		ptr[i] = var;
+		// Mirror to console in talk mode...
+		if (talkMode){ROM_UARTCharPutNonBlocking(UART0_BASE, ptr[i]);}
+		// ...or else see if it's a message notification, like +CMTI: "SM",12
 		else {
 			if(ptr[i-3] == 'C' && ptr[i-2] == 'M' && ptr[i-1] == 'T'&& ptr[i] == 'I'){
-				UART1gets(g_cInput,sizeof(g_cInput));					// Grab everything...
-				msgCountStr = strtok(g_cInput,"\n");				// ...stop after newline
-				strncpy(msgCountStr,msgCountStr+7,3);					// Parse out the message counter
+				UART1gets(g_cInput,sizeof(g_cInput));		// Grab everything...
+				msgCountStr = strtok(g_cInput,"\n");		// ...stop after newline.
+				strncpy(msgCountStr,msgCountStr+7,3);		// Parse for count...
 				msgCountStr[3]='\0';
-				sscanf(msgCountStr, "%d", &msgCount);					// Convert to integer
-				UART0printf("\n\r>>> %u NEW MESSAGES",msgCount);		// Tell the user
+				sscanf(msgCountStr, "%d", &msgCount);		// ... convert to integer
+				
+				// Tell the user
+				UART0printf("\n\r>>> %u NEW MESSAGES",msgCount);
 			}
 		}
-		i++;															// Go get the next character
+		// Proceed to next character
+		i++;
 	}
 }
 
 //*****************************************************************************
 //
-// MPR121 INTERRUPT HANDLER 
+// MPR121 TOUCHPAD INTERRUPT HANDLER 
 // Interrupt is active low on PC7
 //
 //*****************************************************************************
@@ -275,20 +398,20 @@ MPR121IntHandler(void)
 	// If one electrode was pressed, register it
 	if (touchNumber == 1) {
 		if (touchedMap & (1<<K1)){ 
-			pressedKey = '1'; 
-			if (keysUnlocked ) { relayToggle(1); }
+			pressedKey = '1';
+			if (keysUnlocked ) { relayToggle(1); }	// Toggle relay 1
 		}
 		else if (touchedMap & (1<<K2)){ 
-			pressedKey = '2'; 
-			if (keysUnlocked ) { relayToggle(2); }
+			pressedKey = '2';
+			if (keysUnlocked ) { relayToggle(2); }	// Toggle relay 2
 		}
 		else if (touchedMap & (1<<K3)){ 
 			pressedKey = '3'; 
-			if (keysUnlocked ) { relayToggle(3); }
+			if (keysUnlocked ) { relayToggle(3); }	// Toggle relay 3
 		}
 		else if (touchedMap & (1<<K4)){ 
 			pressedKey = '4'; 
-			if (keysUnlocked ) { relayToggle(4); }
+			if (keysUnlocked ) { relayToggle(4); }	// Toggle relay 4
 		}
 		else if (touchedMap & (1<<K5)) { pressedKey = '5'; }
 		else if (touchedMap & (1<<K6)) { pressedKey = '6'; }
@@ -299,21 +422,29 @@ MPR121IntHandler(void)
 		else if (touchedMap & (1<<KS)) { pressedKey = '*'; }
 		else if (touchedMap & (1<<KP)) { 
 			pressedKey = '#';
+			// Start timer 0A when user touches "#," to see if they're
+			// trying to lock or unlock
 			ROM_TimerLoadSet(TIMER0_BASE, TIMER_A, ROM_SysCtlClockGet()* 2);
 			ROM_TimerEnable(TIMER0_BASE, TIMER_A);
 		}
 		if (keysUnlocked) { 
+			// If the keys are unlocked, print the touched key to console...
 			UART0printf("\n\r> %c",pressedKey); 
+			curCol+=6;
+			if (curCol>XMAX) { curCol = 0; }
+			LCDchar(4,curCol,pressedKey, NORMAL);
+			LCDchar(4,curCol+6,' ', NORMAL);
+			// ... and start timer 1A, the idle keypad timer.
 			ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* 15);
 			ROM_TimerEnable(TIMER1_BASE, TIMER_A);
 		}
 	}
-	// If one electrode was released
+	// One electrode released - do nothing
 	else if (touchNumber == 0) {}
-	// Do nothing if more than one button is pressed
+	// More than one button is pressed - do nothing
 	else {}
 	
-	// Clear the asserted interrupts.
+	// Clear the asserted interrupts
 	GPIOIntClear(GPIO_PORTC_BASE, GPIO_PIN_7);
 }
 
@@ -349,13 +480,12 @@ KeyPressTimer0IntHandler(void)
 	// Disable the timer
 	ROM_TimerDisable(TIMER0_BASE, TIMER_A);
 
-	// The timer is up! If # is still being pressed, toggle keysUnlocked
+	// The timer is up! If # is still being pressed, toggle keylock.
 	if (touchedMap & (1<<KP)) { 
-		if (keysUnlocked){ 
-			MPR121toggleLock();
-		}
+		if (keysUnlocked){ MPR121toggleLock(); }
 		else { 
 			MPR121toggleLock();
+			// Also, restart the idle timer
 			ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* 15);
 			ROM_TimerEnable(TIMER1_BASE, TIMER_A);
 		}
@@ -381,13 +511,13 @@ SysTickIntHandler(void)
 
     switch(ui32Buttons & ALL_BUTTONS)
     {
-    case LEFT_BUTTON:
+    case LEFT_BUTTON:	// TOGGLE "TALK TO GSM" MODE
         // Check if the button has been held int32_t enough to act
         if((ui32TickCounter % APP_BUTTON_POLL_DIVIDER) == 0)
         {
 			// Switch modes depending on current state
 			if (talkMode == false){
-				// Get LED status and store for when we switch back. Turn on blue LED only.
+				// Get LED status and store. Turn on blue LED.
 				buttonLEDhold = GPIOPinRead(GPIO_PORTF_BASE, LED_MAP);
 				GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, 0);
 				GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);
@@ -396,23 +526,24 @@ SysTickIntHandler(void)
 			}
 			else{
 				UART0printf("\n\r> [Left button] Returning to main program.");
-				GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, buttonLEDhold);		//Restore LED status
+				// Restore LED status
+				GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, buttonLEDhold);
 				talkMode = false;
 			}
         }
         break;
 
-    case RIGHT_BUTTON:
+    case RIGHT_BUTTON:	// TOGGLE POWER TO GSM MODULE
         // Check if the button has been held int32_t enough to act
         if((ui32TickCounter % APP_BUTTON_POLL_DIVIDER) == 0)
         {
-			blinkLED(3,2,'R');
+			blinkLED(3,2,RD_LED);
 			UART0printf("\n\r> [Right button] Cycling power to GSM.");
 			GSMtogglePower();
         }
         break;
 
-    case ALL_BUTTONS:
+    case ALL_BUTTONS:	// DO NOTHING
         // Both buttons for longer than debounce time
         if(ui32HibMMdeEntryCount < APP_HIB_BUTTON_DEBOUNCE)
         {
@@ -431,12 +562,46 @@ SysTickIntHandler(void)
 
 //*****************************************************************************
 //
+// INITIATE ADC
+// PE0 (external D0)
+//
+//*****************************************************************************
+void
+ADCinit(void)
+{
+	// Set PE0 (External D0) as the ADC pin
+	GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_0);
+	
+	// Enable sample sequence 3 with a processor signal trigger.  Sequence 3
+	// will do a single sample when the processor sends a signal to start the
+	// conversion.  Each ADC module has 4 programmable sequences, sequence 0
+	// to sequence 3.  This example is arbitrarily using sequence 3.
+	ADCSequenceConfigure(ADC0_BASE, 3, ADC_TRIGGER_PROCESSOR, 0);
+	
+	// Configure step 0 on sequence 3.  Sample channel 3 (ADC_CTL_CH3) in
+	// single-ended mode (default) and configure the interrupt flag
+	// (ADC_CTL_IE) to be set when the sample is done.  Tell the ADC logic
+	// that this is the last conversion on sequence 3 (ADC_CTL_END).  Sequence
+	// 3 has only one programmable step.  Sequence 1 and 2 have 4 steps, and
+	// sequence 0 has 8 programmable steps.  Since we are only doing a single
+	// conversion using sequence 3 we will only configure step 0.
+	ADCSequenceStepConfigure(ADC0_BASE, 3, 0, ADC_CTL_CH3 | ADC_CTL_IE | ADC_CTL_END);
+	
+	// Enable sample sequence 3
+	ADCSequenceEnable(ADC0_BASE, 3);
+	
+	// Clear interrupt flag before starting
+	ADCIntClear(ADC0_BASE, 3);
+}
+
+//*****************************************************************************
+//
 // BLINK LED
 // blinkSpeed in 1/10 of a second (roughly)
 //
 //*****************************************************************************
 void 
-blinkLED (int blinkCount, int blinkSpeed, int LEDcolor)
+blinkLED (int blinkCount, int blinkSpeed, uint8_t LEDcolor)
 {
 	int m;
 	int blinkHold;
@@ -450,9 +615,7 @@ blinkLED (int blinkCount, int blinkSpeed, int LEDcolor)
 	for( m=blinkCount; m>=0; m--)
 	{
 		// Turn on the LED.
-		if ( LEDcolor == 'R' ) {GPIOPinWrite(GPIO_PORTF_BASE, RD_LED, RD_LED);}
-		else if ( LEDcolor == 'B' ) {GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);}
-		else if ( LEDcolor == 'G' ) {GPIOPinWrite(GPIO_PORTF_BASE, GN_LED, GN_LED);}
+		GPIOPinWrite(GPIO_PORTF_BASE, LEDcolor, LEDcolor);
 		
 		// Delay for a bit.
 		for(blinkLoop = 0; blinkLoop < blinkSpeed; blinkLoop++){}
@@ -482,24 +645,28 @@ relayOn(int relayNum)
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_4, 0);			// Rel1N
 		relayStatus[0] = 1;
 		UART0printf("\n\r> RELAY 1 ON");
+		LCDstring(0,0,"RELAY 1 ON ", NORMAL);
 	}
 	if (relayNum == 2 || relayNum == 0){
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_3, GPIO_PIN_3);	// Rel2
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_5, 0);			// Rel2N
 		relayStatus[1] = 1;
 		UART0printf("\n\r> RELAY 2 ON");
+		LCDstring(1,0,"RELAY 2 ON ", NORMAL);
 	}
 	if (relayNum == 3 || relayNum == 0){
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_2, GPIO_PIN_2);	// Rel3
 		GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_5, 0);			// Rel3N
 		relayStatus[2] = 1;
 		UART0printf("\n\r> RELAY 3 ON");
+		LCDstring(2,0,"RELAY 3 ON ", NORMAL);
 	}
 	if (relayNum == 4 || relayNum == 0){
 		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_PIN_4);	// Rel4
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_1, 0);			// Rel4N
 		relayStatus[3] = 1;
 		UART0printf("\n\r> RELAY 4 ON");
+		LCDstring(3,0,"RELAY 4 ON ", NORMAL);
 	}
 }
 
@@ -517,37 +684,50 @@ relayOff(int relayNum)
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_4, GPIO_PIN_4);	// Rel1N
 		relayStatus[0] = 0;
 		UART0printf("\n\r> RELAY 1 OFF");
+		LCDstring(0,0,"RELAY 1 OFF", INVERSE);
 	}
 	if (relayNum == 2 || relayNum == 0){
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_3, 0);			// Rel2
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_5, GPIO_PIN_5);	// Rel2N
 		relayStatus[1] = 0;
 		UART0printf("\n\r> RELAY 2 OFF");
+		LCDstring(1,0,"RELAY 2 OFF", INVERSE);
 	}
 	if (relayNum == 3 || relayNum == 0){
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_2, 0);			// Rel3
 		GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_5, GPIO_PIN_5);	// Rel3N
 		relayStatus[2] = 0;
 		UART0printf("\n\r> RELAY 3 OFF");
+		LCDstring(2,0,"RELAY 3 OFF", INVERSE);
 	}
 	if (relayNum == 4 || relayNum == 0){
 		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, 0);			// Rel4
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_1, GPIO_PIN_1);	// Rel4N
 		relayStatus[3] = 0;
 		UART0printf("\n\r> RELAY 4 OFF");
+		LCDstring(3,0,"RELAY 4 OFF", INVERSE);
 	}
 }
 
 //*****************************************************************************
 //
 // TOGGLE RELAY
+// 0 toggles all
 //
 //*****************************************************************************
 void 
 relayToggle(int relayNum)
 {
-    if (relayStatus[relayNum-1]) { relayOff(relayNum); }
-	else { relayOn(relayNum); }
+	if (relayNum == 0) {
+		for ( relayNum=0; relayNum<5; relayNum++ ){
+			if (relayStatus[relayNum-1]) { relayOff(relayNum); }
+			else { relayOn(relayNum); }
+		}
+	}
+	else {
+		if (relayStatus[relayNum-1]) { relayOff(relayNum); }
+		else { relayOn(relayNum); }
+	}
 }
 
 //*****************************************************************************
@@ -560,13 +740,17 @@ GSMcheckPower (void)
 {
 	volatile uint32_t ui32Loop;			// for time delay
 	
-	// Delay for a bit, then make sure the flag is ON (something seems to trigger the interrupt when I'm setting it up)
+	// Delay for a bit, then make sure the flag is ON (something seems to 
+	// trigger the interrupt when I'm setting it up)
 	for(ui32Loop = 0; ui32Loop < 990000; ui32Loop++){}
 	GSMoff = true;
-	// Then, send an AT to the GSM module - if it triggers the interrupt, we know the GSM is on
+	
+	// Then, send an AT to the GSM module - if it triggers the int, GSM is on
 	UART1printf("AT\r");
 	// Delay for a bit.
 	for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}
+	
+	// Return status
 	if ( GSMoff ) { return false; }
 	return true;
 }
@@ -594,6 +778,7 @@ GSMtogglePower( void )
 	UART0printf("\n\r--- (step 2 of 2) GSM power key toggled...");
 	
 	// This part doesn't work. Only ever says off.
+	for(ui32Loop = 0; ui32Loop < 1000000; ui32Loop++){}
 	if (GSMcheckPower()){ UART0printf("\n\r--- GSM power ON!"); }
 	else { UART0printf("\n\r--- GSM power OFF!"); }
 }
@@ -607,11 +792,11 @@ GSMtogglePower( void )
 void 
 GSMcheckTime(void)
 {
-	int k;
-	int j = 1;
+	int k;						// Count of lines from GSM response
+	int j = 1;					// Keep track of which line we're checking
 	
-	UART1printf("AT+CCLK?\r");
-	k = GSMgetResponse();
+	UART1printf("AT+CCLK?\r");	// Ask GSM module for the time
+	k = GSMgetResponse();		// Store to responseLine[] array, get line count
 		
 	while ( j < k-1 ){
 		// Find the time in the lines we get back
@@ -639,14 +824,15 @@ GSMcheckTime(void)
 int 
 GSMgetResponse(void)
 {
-	bool readResponse = true;		// Keeps the loop open while getting a message
+	bool readResponse = true;		// Keeps the loop open while getting message
 	int readLine = 1;				// Counts the lines of the message
 	char *GSMresponse = NULL;		// Use to grab input
 	static char g_cInput[128];		// String input to a UART
 	
 	while (readResponse){
-		// Grab a line, stop after new-line
+		// Grab a line
 		UART1gets(g_cInput,sizeof(g_cInput));
+		// Stop after newline
 		GSMresponse = strtok(g_cInput,"\n");
 		strcpy(responseLine[readLine], GSMresponse);
 		// If this line says OK we've got the whole message
@@ -668,14 +854,15 @@ GSMprocessMessage( int activeMsg )
 {
 	bool msgPresent = true;			// Flag to ignore deleted messages
 	char *msgEnvelope = NULL;		// Message envelope holder
-	const char commaCh[] = ",";		// comma character
-	volatile uint32_t ui32Loop;		// for time delay
-	int j = 1;
-	int k;
+	const char commaCh[] = ",";		// Comma character
+	volatile uint32_t ui32Loop;		// For time delay
+	int j = 1;						// Keep track of the line being processed
+	int k;							// Hold the number of lines
 	
 	msgContent = NULL;
 	
-	// FIRST: Request the message and get the lines of the response (includes envelope, nulls, SIM responses)
+	/// FIRST: Request the message and get the lines of the response (includes 
+	/// envelope, nulls, SIM responses)
 	UART0printf("\n\r>>> PROCESSING MESSAGE %u",activeMsg);
 	UART1printf("AT+CMGR=%u\r\n",activeMsg);
 	k = GSMgetResponse();
@@ -683,31 +870,33 @@ GSMprocessMessage( int activeMsg )
 	// Delay for a bit, needed when processing multiple messages
 	for(ui32Loop = 0; ui32Loop < 100000; ui32Loop++){}
 	
-	// SECOND: Process message lines for envelope information, and to make the message into a string
+	/// SECOND: Process message lines for envelope information, and to make the 
+	/// message into a string
 	msgContent = NULL;
 	// Now we've got the whole message, so let's parse it
 	while ( j < k+1 ){
-		// If this line's the envelope, like +CMGR: "REC READ","+13158078555","","15/10/08,13:18:40-20"
+		// If this line's the envelope, like: 
+		// +CMGR: "REC READ","+13158078555","","15/10/08,13:18:40-20"
 		if ( strstr(responseLine[j],"+CMGR:") != '\0' ){
 			// Parse the line for status, ph number, date, and time.
 			msgEnvelope = responseLine[j];
-			msgSender = strtok(msgEnvelope,commaCh);	// This way we skip status
+			msgSender = strtok(msgEnvelope,",");	// Skip status
 			msgSender = strtok(NULL,commaCh);
-			msgDate = strtok(NULL,commaCh);				// This way we skip phonebook entry
+			msgDate = strtok(NULL,commaCh);			// Skip phonebook entry
 			msgDate = strtok(NULL,commaCh);
 			msgTime = strtok(NULL,commaCh);
-			strncpy(msgSender,msgSender+2,11);			// Store the number
+			strncpy(msgSender,msgSender+2,11);		// Store the number
 			msgSender[11] = '\0';
-			strncpy(msgDate,msgDate+1,8);				// Store the date
+			strncpy(msgDate,msgDate+1,8);			// Store the date
 			msgDate[8] = '\0';
-			strncpy(msgTime,msgTime,8);					// Store the time
+			strncpy(msgTime,msgTime,8);				// Store the time
 			msgTime[8] = '\0';
-			msgPresent = true;							// If there's an envelope, there's a message
+			msgPresent = true;						// Envelope means a message
 		}
 		// Case for message content
 		// If we already found the envelope, and the line's not blank...
 		else if ( msgEnvelope != NULL && responseLine[j] != NULL ){
-			// ... and we haven't found any content, this is the first message line.
+			// ... and we haven't found any content, this is the first line.
 			if (msgContent == NULL) { msgContent = responseLine[j]; }
 			// ... otherwise, add a space and append this line.
 			else if ( j + 2 <= k ) {
@@ -715,7 +904,7 @@ GSMprocessMessage( int activeMsg )
 				strcat(msgContent, responseLine[j]);
 			}
 		}
-		// If it's not the envelope, and the envelope is blank, this message doesn't exist
+		// If it's not the envelope, and envelope is blank, no message
 		else { msgPresent = false; }
 		j++;
 	}
@@ -727,7 +916,7 @@ GSMprocessMessage( int activeMsg )
 	}
 	else { UART0printf("... doesn't exist"); }
 	
-	// THIRD: delete the message
+	/// THIRD: delete the message
 	if ( testDelete && msgPresent ){
 		UART1printf("AT+CMGD=%u\r\n",activeMsg);
 		k = GSMgetResponse();
@@ -743,15 +932,16 @@ GSMprocessMessage( int activeMsg )
 void 
 GSMsendSMS(char *destNbr, char *msgBody)
 {
-	volatile uint32_t ui32Loop;		// for time delay
+	volatile uint32_t ui32Loop;		// For time delay
 	bool msgSent = false;			// Flag for confirming message was sent
 	static char g_cInput[128];		// String input to a UART
 	
-	UART1printf( "AT+CMGS=\"%s\"\r",destNbr);				// Initialize with dest. address
-	for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}		// wait
-	UART1printf( "%s\r", msgBody );							// Enter message body
-	for(ui32Loop = 0; ui32Loop < 9000; ui32Loop++){}		// wait
-	UART1printf( "\x1A" );									// Ctrl-Z to send
+	UART1printf( "AT+CMGS=\"%s\"\r",destNbr);			// Initialize with ph#
+	for(ui32Loop = 0; ui32Loop < 900000; ui32Loop++){}	// Wait
+	UART1printf( "%s\r", msgBody );						// Enter message body
+	for(ui32Loop = 0; ui32Loop < 9000; ui32Loop++){}	// Wait
+	UART1printf( "\x1A" );								// Ctrl-Z to send
+
 	// Loop to wait for message sent confirmation
 	while (msgSent == false){
 		UART1gets(g_cInput,sizeof(g_cInput));
@@ -772,34 +962,41 @@ GSMsendSMS(char *destNbr, char *msgBody)
 void 
 initI2C(void)
 {
-	//reset module
+	///reset module
 	ROM_SysCtlPeripheralReset(SYSCTL_PERIPH_I2C0);
 
-	// Configure the pin muxing for I2C0 functions on port B2 and B3.
+	/// Configure the pin muxing for I2C0 functions on port B2 and B3.
 	ROM_GPIOPinConfigure(GPIO_PB2_I2C0SCL);
 	ROM_GPIOPinConfigure(GPIO_PB3_I2C0SDA);
 
-	// Select the I2C function for these pins.
+	/// Select the I2C function for these pins.
 	ROM_GPIOPinTypeI2CSCL(GPIO_PORTB_BASE, GPIO_PIN_2);
 	ROM_GPIOPinTypeI2C(GPIO_PORTB_BASE, GPIO_PIN_3);
 
-	// Enable and initialize the I2C0 master module.  Use the system clock for
-	// the I2C0 module.  The last parameter sets the I2C data transfer rate.
-	// If false the data rate is set to 100kbps and if true the data rate will
-	// be set to 400kbps.
+	/// Enable and initialize the I2C0 master module.  Use the system clock for
+	/// the I2C0 module.  The last parameter sets the I2C data transfer rate.
+	/// If false the data rate is set to 100kbps and if true the data rate will
+	/// be set to 400kbps.
 	ROM_I2CMasterInitExpClk(I2C0_BASE, SysCtlClockGet(), false);
 
-	//clear I2C FIFOs
+	///clear I2C FIFOs
 	HWREG(I2C0_BASE + I2C_O_FIFOCTL) = 80008000;
 	
-	// Enable the I2C interrupt
-	ROM_GPIOPinTypeGPIOInput(GPIO_PORTC_BASE, GPIO_PIN_7);			// Set pin C7 as input
-	ROM_GPIOPadConfigSet(GPIO_PORTC_BASE, GPIO_PIN_7, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);	//Pull
-	GPIOIntDisable(GPIO_PORTC_BASE, GPIO_PIN_7);					// Disable interrupt for PC7
-	GPIOIntClear(GPIO_PORTC_BASE, GPIO_PIN_7);						// Clear pending interrupts for PC7
-	GPIOIntRegister(GPIO_PORTC_BASE, MPR121IntHandler);				// Register port C interrupt handler
-	GPIOIntTypeSet(GPIO_PORTC_BASE, GPIO_PIN_7, GPIO_LOW_LEVEL);	// Configure PC7 for falling edge
-	GPIOIntEnable(GPIO_PORTC_BASE, GPIO_PIN_7); 					// Enable interrupt
+	/// Enable the I2C interrupt:
+	// Set pin C7 as input
+	ROM_GPIOPinTypeGPIOInput(GPIO_PORTC_BASE, GPIO_PIN_7);
+	// Weak pull up
+	ROM_GPIOPadConfigSet(GPIO_PORTC_BASE, GPIO_PIN_7, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
+	// Disable interrupt for PC7
+	GPIOIntDisable(GPIO_PORTC_BASE, GPIO_PIN_7);
+	// Clear pending interrupts for PC7
+	GPIOIntClear(GPIO_PORTC_BASE, GPIO_PIN_7);
+	// Register port C interrupt handler
+	GPIOIntRegister(GPIO_PORTC_BASE, MPR121IntHandler);
+	// Configure PC7 for falling edge
+	GPIOIntTypeSet(GPIO_PORTC_BASE, GPIO_PIN_7, GPIO_LOW_LEVEL);
+	// Enable interrupt
+	GPIOIntEnable(GPIO_PORTC_BASE, GPIO_PIN_7);
 }
 
 //*****************************************************************************
@@ -812,31 +1009,29 @@ initI2C(void)
 uint32_t 
 I2Creceive(uint32_t slave_addr, uint8_t reg)
 {
-    //specify that we are writing (a register address) to the
-    //slave device
-    I2CMasterSlaveAddrSet(I2C0_BASE, slave_addr, false);
- 
-    //specify register to be read
-    I2CMasterDataPut(I2C0_BASE, reg);
- 
-    //send control byte and register address byte to slave device
-    I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_BURST_SEND_START);
-     
-    //wait for MCU to finish transaction
-    while(I2CMasterBusy(I2C0_BASE));
-     
-    //specify that we are going to read from slave device
-    I2CMasterSlaveAddrSet(I2C0_BASE, slave_addr, true);
-     
-    //send control byte and read from the register we
-    //specified
-    I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_SINGLE_RECEIVE);
-     
-    //wait for MCU to finish transaction
-    while(I2CMasterBusy(I2C0_BASE));
-     
-    //return data pulled from the specified register
-    return I2CMasterDataGet(I2C0_BASE);
+	// Specify that we are writing (a register address) to the slave address
+	I2CMasterSlaveAddrSet(I2C0_BASE, slave_addr, false);
+
+	// Specify register to be read
+	I2CMasterDataPut(I2C0_BASE, reg);
+
+	// Send control byte and register address byte to slave device
+	I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_BURST_SEND_START);
+	 
+	// Wait for MCU to finish transaction
+	while(I2CMasterBusy(I2C0_BASE));
+	 
+	// Specify that we are going to read from slave device
+	I2CMasterSlaveAddrSet(I2C0_BASE, slave_addr, true);
+	 
+	// Send control byte and read from the register we specified
+	I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_SINGLE_RECEIVE);
+	 
+	// Wait for MCU to finish transaction
+	while(I2CMasterBusy(I2C0_BASE));
+	 
+	// Return data pulled from the specified register
+	return I2CMasterDataGet(I2C0_BASE);
 }
 
 //*****************************************************************************
@@ -849,67 +1044,67 @@ I2Creceive(uint32_t slave_addr, uint8_t reg)
 void 
 I2Csend(uint8_t slave_addr, uint8_t num_of_args, ...)
 {
-    // Tell the master module what address it will place on the bus when
-    // communicating with the slave.
-    I2CMasterSlaveAddrSet(I2C0_BASE, slave_addr, false);
-     
-    //stores list of variable number of arguments
-    va_list vargs;
-     
-    //specifies the va_list to "open" and the last fixed argument
-    //so vargs knows where to start looking
-    va_start(vargs, num_of_args);
-     
-    //put data to be sent into FIFO
-    I2CMasterDataPut(I2C0_BASE, va_arg(vargs, uint32_t));
-     
-    //if there is only one argument, we only need to use the
-    //single send I2C function
-    if(num_of_args == 1)
-    {
-        //Initiate send of data from the MCU
-        I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_SINGLE_SEND);
-         
-        // Wait until MCU is done transferring.
-        while(I2CMasterBusy(I2C0_BASE));
-         
-        //"close" variable argument list
-        va_end(vargs);
-    }
-     
-    //otherwise, we start transmission of multiple bytes on the
-    //I2C bus
-    else
-    {
-        //Initiate send of data from the MCU
-        I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_BURST_SEND_START);
-         
-        // Wait until MCU is done transferring.
-        while(I2CMasterBusy(I2C0_BASE));
-         
-        //send num_of_args-2 pieces of data, using the
-        //BURST_SEND_CONT command of the I2C module
-        for(uint8_t i = 1; i < (num_of_args - 1); i++)
-        {
-            //put next piece of data into I2C FIFO
-            I2CMasterDataPut(I2C0_BASE, va_arg(vargs, uint32_t));
-            //send next data that was just placed into FIFO
-            I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_BURST_SEND_CONT);
-     
-            // Wait until MCU is done transferring.
-            while(I2CMasterBusy(I2C0_BASE));
-        }
-     
-        //put last piece of data into I2C FIFO
-        I2CMasterDataPut(I2C0_BASE, va_arg(vargs, uint32_t));
-        //send next data that was just placed into FIFO
-        I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_BURST_SEND_FINISH);
-        // Wait until MCU is done transferring.
-        while(I2CMasterBusy(I2C0_BASE));
-         
-        //"close" variable args list
-        va_end(vargs);
-    }
+	// Tell the master module what address it will place on the bus when
+	// communicating with the slave.
+	I2CMasterSlaveAddrSet(I2C0_BASE, slave_addr, false);
+	 
+	// Stores list of variable number of arguments
+	va_list vargs;
+	 
+	// Specifies the va_list to "open" and the last fixed argument
+	// so vargs knows where to start looking
+	va_start(vargs, num_of_args);
+	 
+	// Put data to be sent into FIFO
+	I2CMasterDataPut(I2C0_BASE, va_arg(vargs, uint32_t));
+	 
+	// If there is only one argument, we only need to use the
+	// single send I2C function
+	if(num_of_args == 1)
+	{
+		// Initiate send of data from the MCU
+		I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_SINGLE_SEND);
+		 
+		// Wait until MCU is done transferring.
+		while(I2CMasterBusy(I2C0_BASE));
+		 
+		// "Close" variable argument list
+		va_end(vargs);
+	}
+	 
+	// Otherwise, we start transmission of multiple bytes on the
+	// I2C bus
+	else
+	{
+		// Initiate send of data from the MCU
+		I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_BURST_SEND_START);
+		 
+		// Wait until MCU is done transferring.
+		while(I2CMasterBusy(I2C0_BASE));
+		 
+		// Send num_of_args-2 pieces of data, using the
+		// BURST_SEND_CONT command of the I2C module
+		for(uint8_t i = 1; i < (num_of_args - 1); i++)
+		{
+			// Put next piece of data into I2C FIFO
+			I2CMasterDataPut(I2C0_BASE, va_arg(vargs, uint32_t));
+			// Send next data that was just placed into FIFO
+			I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_BURST_SEND_CONT);
+	 
+			// Wait until MCU is done transferring.
+			while(I2CMasterBusy(I2C0_BASE));
+		}
+	 
+		// Put last piece of data into I2C FIFO
+		I2CMasterDataPut(I2C0_BASE, va_arg(vargs, uint32_t));
+		// Send next data that was just placed into FIFO
+		I2CMasterControl(I2C0_BASE, I2C_MASTER_CMD_BURST_SEND_FINISH);
+		// Wait until MCU is done transferring.
+		while(I2CMasterBusy(I2C0_BASE));
+		 
+		// "Close" variable args list
+		va_end(vargs);
+	}
 }
 
 //*****************************************************************************
@@ -974,12 +1169,13 @@ MPR121toggleLock(void)
 		GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, 0);
 		GPIOPinWrite(GPIO_PORTF_BASE, RD_LED, RD_LED);
 		UART0printf("\n\r> KEYPAD LOCKED");
+		LCDstring(7,0," KEYPAD LOCKED ", INVERSE);
 	}
 	else{
 		keysUnlocked = true;
 		GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, 0);
 		GPIOPinWrite(GPIO_PORTF_BASE, GN_LED, GN_LED);
-		UART0printf("\n\r> KEYPAD UNLOCKED");
+		LCDstring(7,0,"KEYPAD UNLOCKED", NORMAL);
 	}
 	
 }
@@ -987,12 +1183,12 @@ MPR121toggleLock(void)
 //*****************************************************************************
 //
 // INITIALIZE SSI/SPI FOR LCD
-// PD0 - SSI3CLK	clock		// stays high - why?
+// PD0 - SSI3CLK	clock
 // PD1 - SSI3FSS	chip select
-// PD2 - SSI3RX		MISO		// not present on LCD
+// PD2 - SSI3RX		MISO		// not present on LCD, cofigure anyway...
 // PD3 - SSI3TX		MOSI
-// PD6 - 			command		// doubles as U2Rx/debug
-// PD7 - 			reset		// doubles as U2Tx
+// PD6 - 			command		// 0 for command, 1 for data
+// PD7 - 			reset		// hold high to activate LCD
 //
 //*****************************************************************************
 void
@@ -1003,7 +1199,7 @@ initSSI3(void)
 	// Configure GPIO Pins for SSI3 mode.
 	ROM_GPIOPinConfigure(GPIO_PD0_SSI3CLK);
 	ROM_GPIOPinConfigure(GPIO_PD1_SSI3FSS);
-	ROM_GPIOPinConfigure(GPIO_PD2_SSI3RX);	// Not present on LCD, configure anyway...
+	//ROM_GPIOPinConfigure(GPIO_PD2_SSI3RX);
 	ROM_GPIOPinConfigure(GPIO_PD3_SSI3TX);
 	ROM_GPIOPinTypeSSI(GPIO_PORTD_BASE, GPIO_PIN_3 | GPIO_PIN_2 | GPIO_PIN_1 | GPIO_PIN_0);
 
@@ -1012,7 +1208,7 @@ initSSI3(void)
 	//   0       0   SSI_FRF_MOTO_MODE_0
 	//   0       1   SSI_FRF_MOTO_MODE_1
 	//   1       0   SSI_FRF_MOTO_MODE_2
-	//   1       1   SSI_FRF_MOTO_MODE_3 -> select this based on EA DOGS102W6 data sheet
+	//   1       1   SSI_FRF_MOTO_MODE_3 -> select for EA DOGS102W6
 	SSIConfigSetExpClk(SSI3_BASE, ROM_SysCtlClockGet(), SSI_FRF_MOTO_MODE_3, SSI_MODE_MASTER, 1000000, 8);
 
 	// Enable
@@ -1058,36 +1254,36 @@ initLCD(void)
 	GPIOPinWrite(GPIO_PORTD_BASE, GPIO_PIN_6, 0);
 	GPIOPinWrite(GPIO_PORTD_BASE, GPIO_PIN_6, GPIO_PIN_6);
 	
-	// Set up PD7 as reset (disable NMI) NOTE: PD7 is NMI by default, so unlike other pins, this procedure must be followed in order to make the pin usable as GPIO.
+	// Set up PD7 as reset (disable NMI) NOTE: PD7 is NMI by default, so unlike 
+	// other pins, this procedure must be followed in order to make the pin 
+	// usable as GPIO.
 	HWREG(GPIO_PORTD_BASE + GPIO_O_LOCK) = GPIO_LOCK_KEY;	// Unlock the port
 	HWREG(GPIO_PORTD_BASE + GPIO_O_CR) |= GPIO_PIN_7;		// Unlock the pin
 	HWREG(GPIO_PORTD_BASE + GPIO_O_AFSEL) &= ~GPIO_PIN_7;  
 	HWREG(GPIO_PORTD_BASE + GPIO_O_DEN) |= GPIO_PIN_7;
 	HWREG(GPIO_PORTD_BASE + GPIO_O_LOCK) = 0;				// Lock the port
-	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTD_BASE, GPIO_PIN_7);	// Configure PD7 as output
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTD_BASE, GPIO_PIN_7);	// Output configure
 	
-	//Set display reset to high -> LCD is running now
+	// Set display reset to high -> LCD is running now
 	GPIOPinWrite(GPIO_PORTD_BASE, GPIO_PIN_7, GPIO_PIN_7);
-	UART0printf("\n\r--- PD7 set as LCD reset, pulled high...");
+	
+	// Initialize bottom view 3.3V (booster on) 8Bit SPI
+	LCDsend(0x40,LCD_CMD);	// Startline 0
+	LCDsend(0xA1,LCD_CMD);	// SEG reverse
+	LCDsend(0xC0,LCD_CMD);	// Set COM direction (COM0-COM63)
+	LCDsend(0xA4,LCD_CMD);	// Set all Pixel to on
+	LCDsend(0xA6,LCD_CMD);	// Display inverse off
+	LCDsend(0xA2,LCD_CMD);	// Set bias 1/9
+	LCDsend(0x2F,LCD_CMD);	// Booster, regulator, follower on
+	LCDsend(0x27,LCD_CMD);	// Set contrast
+	LCDsend(0x81,LCD_CMD);	// Set contrast
+	LCDsend(0x10,LCD_CMD);	// Set contrast
+	LCDsend(0xFA,LCD_CMD);	// Temperature compensation
+	LCDsend(0x90,LCD_CMD);	// Temperature compensation
+	LCDsend(0xAF,LCD_CMD);	// Display on
 
-	//Initialize bottom view 3.3V (booster on) 8Bit SPI
-	LCDsend(0x40,0); //Startline 0
-	LCDsend(0xA1,0); //SEG reverse
-	LCDsend(0xC0,0); //Set COM direction (COM0-COM63)
-	LCDsend(0xA4,0); //Set all Pixel to on
-	LCDsend(0xA6,0); //Display inverse off
-	LCDsend(0xA2,0); //Set bias 1/9
-	LCDsend(0x2F,0); //Booster, regulator, follower on
-	LCDsend(0x27,0); //Set contrast
-	LCDsend(0x81,0); //Set contrast
-	LCDsend(0x10,0); //Set contrast
-	LCDsend(0xFA,0); //Temperature compensation
-	LCDsend(0x90,0); //Temperature compensation
-	LCDsend(0xAF,0); //Display on
-	UART0printf("\n\r--- LCD parameters set...");
-
-	LCDclear(0,0,XMAX,YMAX);		//Clear display and set display buffer to 0
-	UART0printf("\n\r--- Display cleared...");
+	// Clear display
+	LCDclear(0,0,XMAX,YMAX);
 }
 
 //*****************************************************************************
@@ -1098,150 +1294,76 @@ initLCD(void)
 void
 LCDsend(uint32_t theData, uint8_t cmdByte)
 {
-	if (cmdByte == 0){ GPIOPinWrite(GPIO_PORTD_BASE, GPIO_PIN_6, 0); }	//Send command (DCD to 0)
-	else { GPIOPinWrite(GPIO_PORTD_BASE, GPIO_PIN_6, GPIO_PIN_6); }		//Send data (DCD to 1)
-	SSI3sendByte(theData);												//Send byte
+	if (cmdByte == LCD_CMD){ GPIOPinWrite(GPIO_PORTD_BASE, GPIO_PIN_6, 0); }
+	else { GPIOPinWrite(GPIO_PORTD_BASE, GPIO_PIN_6, GPIO_PIN_6); }
+	SSI3sendByte(theData);
 }
 
 //*****************************************************************************
 //
-// CLEAR LCD ORIGINAL
+// SET ADDRESS FOR LCD DATA
 //
 //*****************************************************************************
-void
-LCDclearOriginal(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye)
+void 
+LCDsetAddress(uint32_t page, uint32_t column)
 {
-	//i,j are index variables
-	//ps, pe are page start and endadress
-	//yr is restpixels
-	uint8_t i=0,j=0, ps=0, pe=0, yr=0;
-
-	ps=ys/8; //calculate startpage
-	pe=ye/8; //calculate endpage
-
-	//-------------Clear part of startpage--------------
-	//Set coloumn adress
-	LCDsend(xs&0x0F,0);      //LSB adress
-	LCDsend(0x10+(xs>>4),0); //MSB adress
-
-	//set page adress
-	LCDsend(0xB0+ps,0);
-
-	j=0xFF; //use j as buffer
-	//if start and endadress are in same page you have to make sure, not to delete to much
-	if (pe == ps) { j=ye%8-0xFF; } //calculate stop within first page
-
-	yr=ys%8; //calculate the start within first page
-	for(i=xs; i<=xe; i++) //loop starting first colomn to last coloumn
-	{
-		LCDbuffer[i][ps]&=j>>(8-yr);     //clear the buffer
-		LCDsend(LCDbuffer[i][ps],1); //send the changed pages of the buffer to the display
-	}
-
-	//-------------Clear part of endpage----------------
-	//Set coloumn adress
-	LCDsend(xs&0x0F,0);		//LSB adress
-	LCDsend(0x10+(xs>>4),0); //MSB adress
-
-	//set page adress
-	LCDsend(0xB0+pe,0);
-	yr=ye%8; //calculate the stop within last page
-
-	for(i=xs; i<=xe; i++) //loop starting first colomn to last coloumn
-	{
-		LCDbuffer[i][pe]&=(0xFF<<(yr+1)); //clear the buffer
-		LCDsend(LCDbuffer[i][pe],1);  //send the changed pages of the buffer to the display
-	}
-
-	//-------------------Clear middle pages----------------------
-	for(j=ps+1; j<pe; j++) //loop starting first middle page to last middle page
-	{
-		//Set coloumn adress
-		LCDsend(xs&0x0F,0); 		//LSB adress
-		LCDsend(0x10+(xs>>4),0);	//MSB adress
-
-		//set page adress
-		LCDsend(0xB0+j,0);
-
-		for(i=xs; i<=xe; i++) //loop starting first colomn to last coloumn
-		{
-			LCDbuffer[i][j]=0x00; //clear the buffer
-			LCDsend(0x00,1);   //clear display same as LCDsend(LCDbuffer[i][j]);
-		}
-	}
+	LCDsend(0xB0+page,LCD_CMD);			// Set page address
+	LCDsend(0x0F&column,LCD_CMD);		// Set LSB of column address
+	LCDsend(0x10+(column>>4),LCD_CMD);	// Set MSB of column address
 }
 
 //*****************************************************************************
 //
-// CLEAR LCD TEST
+// CLEAR LCD
 //
 //*****************************************************************************
 void
-LCDclear(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye)
+LCDclear(uint8_t xPxStart, uint8_t yPxStart, uint8_t xPxEnd, uint8_t yPxEnd)
 {
-	//i,j are index variables
-	//ps, pe are page start and endadress
-	//yr is restpixels
-	uint8_t i=0,j=0, ps=0, pe=0, yr=0;
+	unsigned char LCDbuffer[XPIXEL][YPIXEL/8];
+	uint8_t iCol=0,iPg=0,pgStart=0,pgEnd=0,skipPx=0;
+	uint8_t maskPx = 0xFF;	// Mask when first and last pixel are on start page
+	
+	// Calculate start and end pages
+	pgStart=yPxStart/8;
+	pgEnd=yPxEnd/8;
 
-	ps=ys/8; //calculate startpage
-	pe=ye/8; //calculate endpage
+	/// CLEAR FIRST PAGE from FIRST COLUMN
+	LCDsetAddress(pgStart, xPxStart);	// Set address
 
-	//-------------Clear part of startpage--------------
-	//Set coloumn adress
-	LCDsend(xs&0x0F,0);      //LSB adress
-	LCDsend(0x10+(xs>>4),0); //MSB adress
-
-	//set page adress
-	LCDsend(0xB0+ps,0);
-
-	j=0xFF; //use j as buffer
-	//if start and endadress are in same page you have to make sure, not to delete to much
-	if (pe == ps) { j=ye%8-0xFF; } //calculate stop within first page
-
-	yr=ys%8; //calculate the start within first page
-	for(i=xs; i<=xe; i++) //loop starting first colomn to last coloumn
+	// Find start within first page
+	skipPx=yPxStart%8;
+	// Find stop within first page (if first and last pixel are on the same page)
+	if (pgEnd == pgStart) { maskPx=yPxEnd%8-0xFF; }
+	
+	// Loop from first to last column
+	for(iCol=xPxStart; iCol<=xPxEnd; iCol++)
 	{
-		if (i==90){i++;}
-		if (i>88){
-			UART0printf("\n\r> xs %u ys %u xe %u ye %u i %u j %u ps %u pe %u yr %u IN %X OUT %X",xs,ys,xe,ye,i,j,ps,pe,yr,LCDbuffer[i][ps],LCDbuffer[i][ps]&=j>>(8-yr));
-			for(uint32_t ui32Loop = 0; ui32Loop < 1000000; ui32Loop++){}
-		}
-		LCDbuffer[i][ps]&=j>>(8-yr);     //clear the buffer
-		LCDsend(LCDbuffer[i][ps],1); //send the changed pages of the buffer to the display
+		LCDbuffer[iCol][pgStart]&=maskPx>>(8-skipPx);	// Clear buffer
+		LCDsend(LCDbuffer[iCol][pgStart],LCD_DATA);		// Send buffer to display
 	}
 
-	//-------------Clear part of endpage----------------
-	//Set coloumn adress
-	LCDsend(xs&0x0F,0);		//LSB adress
-	LCDsend(0x10+(xs>>4),0); //MSB adress
+	/// CLEAR LAST PAGE to LAST COLUMN
+	LCDsetAddress(pgEnd, xPxStart);	// Set address
+	
+	// Find stop within last page
+	skipPx=yPxEnd%8;
 
-	//set page adress
-	LCDsend(0xB0+pe,0);
-	yr=ye%8; //calculate the stop within last page
-
-	for(i=xs; i<=xe; i++) //loop starting first colomn to last coloumn
+	// Loop from first to last column
+	for(iCol=xPxStart; iCol<=xPxEnd; iCol++)
 	{
-		if (i==90){i++;}
-		LCDbuffer[i][pe]&=(0xFF<<(yr+1)); //clear the buffer
-		LCDsend(LCDbuffer[i][pe],1);  //send the changed pages of the buffer to the display
+		LCDbuffer[iCol][pgEnd]&=(0xFF<<(skipPx+1));	// Clear buffer
+		LCDsend(LCDbuffer[iCol][pgEnd],LCD_DATA);	// Send buffer to display
 	}
 
-	//-------------------Clear middle pages----------------------
-	for(j=ps+1; j<pe; j++) //loop starting first middle page to last middle page
+	/// CLEAR MIDDLE PAGES and ALL COLUMNS
+	// Loop from second page to last page less one
+	for(iPg=pgStart+1; iPg<pgEnd; iPg++)
 	{
-		//Set coloumn adress
-		LCDsend(xs&0x0F,0); 		//LSB adress
-		LCDsend(0x10+(xs>>4),0);	//MSB adress
+		LCDsetAddress(iPg, xPxStart);	// Set address
 
-		//set page adress
-		LCDsend(0xB0+j,0);
-
-		for(i=xs; i<=xe; i++) //loop starting first colomn to last coloumn
-		{
-			LCDbuffer[i][j]=0x00; //clear the buffer
-			LCDsend(0x00,1);   //clear display same as LCDsend(LCDbuffer[i][j]);
-		}
+		// Loop from first to last column (no need for buffer as we're clearing all)
+		for(iCol=xPxStart; iCol<=xPxEnd; iCol++) { LCDsend(0x00,LCD_DATA); }
 	}
 }
 
@@ -1251,66 +1373,52 @@ LCDclear(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye)
 //
 //*****************************************************************************
 void
-LCDfill(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye)
+LCDfill(uint8_t xPxStart, uint8_t yPxStart, uint8_t xPxEnd, uint8_t yPxEnd)
 {
-	//i,j are index variables
-	//ps, pe are page start and end address
-	//yr is restpixels
-	uint8_t i=0, j=0, ps=0, pe=0, yr=0;
+	unsigned char LCDbuffer[XPIXEL][YPIXEL/8];
+	uint8_t iCol=0,iPg=0,pgStart=0,pgEnd=0,skipPx=0;
+	uint8_t maskPx = 0xFF;	// Mask when first and last pixel are on start page
+	
+	// Calculate start and end pages
+	pgStart=yPxStart/8;
+	pgEnd=yPxEnd/8;
 
-	ps=ys/8; //calculate startpage
-	pe=ye/8; //calculate endpage
+	/// FILL FIRST PAGE from FIRST COLUMN
+	LCDsetAddress(pgStart, xPxStart);	// Set address
 
-	//-------------Fill part of startpage--------------
-	//Set coloumn adress
-	LCDsend(xs&0x0F,0);      //LSB adress
-	LCDsend(0x10+(xs>>4),0); //MSB adress
-
-	//set page adress 
-	LCDsend(0xB0+ps,0);
-
-	j=0xFF; //use j as buffer
-	//calculate stop within first page
-	if (pe == ps){ j=ye%8-0xFF; }
-
-	yr=ys%8; //calculate the start within first page
-
-	for(i=xs; i<=xe; i++) //loop starting first colomn to last coloumn
+	// Find start within first page
+	skipPx=yPxStart%8;
+	// Find stop within first page (if first and last pixel are on the same page)
+	if (pgEnd == pgStart) { maskPx=yPxEnd%8-0xFF; }
+	
+	// Loop from first to last column
+	for(iCol=xPxStart; iCol<=xPxEnd; iCol++)
 	{
-		LCDbuffer[i][ps]|=j<<yr;		 //fill the buffer
-		LCDsend(LCDbuffer[i][ps],1);//send the changed pages of the buffer to the display
+		LCDbuffer[iCol][pgStart]|=maskPx<<skipPx;	// Fill buffer
+		LCDsend(LCDbuffer[iCol][pgStart],LCD_DATA);	// Send buffer to display
 	}
 
-	//-------------Fill part of endpage--------------
-	//Set coloumn adress
-	LCDsend(xs&0x0F,0);      //LSB adress
-	LCDsend(0x10+(xs>>4),0); //MSB adress
+	/// FILL LAST PAGE to LAST COLUMN
+	LCDsetAddress(pgEnd, xPxStart);	// Set address
+	
+	// Find stop within last page
+	skipPx=yPxEnd%8;
 
-	//set page adress
-	LCDsend(0xB0+pe,0);
-	yr=ye%8; //calculate the stop within last page
-
-	for(i=xs; i<=xe; i++)	//loop starting first colomn to last coloumn
+	// Loop from first to last column
+	for(iCol=xPxStart; iCol<=xPxEnd; iCol++)
 	{
-		LCDbuffer[i][pe]|=(0xFF>>(8-yr-1));//fill the buffer
-		LCDsend(LCDbuffer[i][pe],1);	//send the changed pages of the buffer to the display
+		LCDbuffer[iCol][pgEnd]|=(0xFF>>(8-skipPx-1));	// Fill  buffer
+		LCDsend(LCDbuffer[iCol][pgEnd],LCD_DATA);		// Send buffer to display
 	}
 
-	//-------------------Fill middle pages----------------------
-	for(j=ps+1; j<pe; j++) //loop starting first middle page to last middle page
+	/// FILL MIDDLE PAGES and ALL COLUMNS
+	// Loop from second page to last page less one
+	for(iPg=pgStart+1; iPg<pgEnd; iPg++)
 	{
-		//Set coloumn adress
-		LCDsend(xs&0x0F,0); 		//LSB adress
-		LCDsend(0x10+(xs>>4),0);	//MSB adress
+		LCDsetAddress(iPg, xPxStart);	// Set address
 
-		//set page adress
-		LCDsend(0xB0+j,0);
-
-		for(i=xs; i<=xe; i++)	//loop starting first colomn to last coloumn
-		{
-			LCDbuffer[i][j]=0xFF; //fill the buffer
-			LCDsend(0xFF,1);   //fill display same as LCDsend(LCDbuffer[i][j]);
-		}
+		// Loop from first to last column (no need for buffer as we're filling all)
+		for(iCol=xPxStart; iCol<=xPxEnd; iCol++) { LCDsend(0xFF,LCD_DATA); }
 	}
 }
 
@@ -1320,117 +1428,34 @@ LCDfill(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye)
 //
 //*****************************************************************************
 void
-LCDchar(uint8_t x, uint8_t y, uint8_t data, uint8_t *font, uint8_t linkmode)
+LCDchar(uint8_t row, uint8_t col, uint16_t f, uint8_t style)
 {
-	//i,j are index variables
-	//n is flag, if char has to be shifted in one page
-	//ps, pe are page start and endadress
-	//yr is restpixels
-	//byte buffer to store char-data
-	uint8_t i=0, j=0, n=1, ps=0, pe=0, yr=0, byte=0;
+	// Each Character consists of 6 Columns on 1 Page
+	// Each Page presents 8 pixels vertically (top = MSB)
+	uint8_t b;
+	uint16_t h;
 
-	unsigned int font_pos=0; //postion of data within the font array
+	// Row boundary check
+	if (row > 7) { row = 7; }
+	// Column boundary check
+	if (col > 101) { col = 101; }
 
-	ps=y/8; 						//calculate startpage
-	pe=font[6]+ps; 	//calculate endpage
-	yr=y%8;  //calculate the start within first page
+	// Handle characters not in our table, replace with '.'
+	if (f < 32 || f > 129) { f = '.'; }
 
-	if(yr) //if you are not starting at 0 in a page, the
-		pe++; //endpage is increased with one
+	// Subtract 32 because FONT6x8[0] is "space" which is ascii 32,
+	// Multiply by 6 because each character is columns wide
+	h = (f - 32) * 6;
 
-	//calculate positon of data in font array
-	//(data*Bytes pro Char)-(start of chars * bytes pro char)+bytes for header
-	font_pos=(data*font[7])-(font[2]*font[7])+8;
-
-	font_pos-=font[4]; //subtract pixels for one char, because it's added again in loop
-
-	if(linkmode==ADD)  //linkmode add, the pixels of char are added into display
-	{
-		for(j=ps; j<pe;j++)  //loop starting first page to last page
-		{
-			//Set coloumn adress
-			LCDsend(x&0x0F,0);     //LSB adress
-			LCDsend(0x10+(x>>4),0);//MSB adress
-
-			//set page adress
-			LCDsend(0xB0+j,0);
-
-			font_pos+=font[4]; //set new postion of data pointer to get next data for one page
-
-			if(n) //jump alternating in if clause or else clause
-			{
-				for(i=x; i<font[4]+x; i++) //loop starting first colomn to last coloumn
-				{
-					byte=font[font[i]+font_pos-x]; //get data from font buffer (subtract x because i is not started with 0)
-					LCDbuffer[i][j]|=byte<<yr;      //write data into display buffer, but shifted if it is needed
-					LCDsend(LCDbuffer[i][j],1); //send the changed pages of the buffer to the display
-				}
-
-				if(yr) //next step is shifting the char the other direction, if the char is not writtin whithin one page
-					n=0;
-			}
-			else //shift the char another direction
-			{
-				font_pos-=font[4]; //set new postion of data pointer to get next data for one page (substract because it
-												   //is added again in next loop
-				for(i=x; i<font[4]+x; i++)
-				{
-					byte=font[font[i]+font_pos-x]; //get data from font buffer (subtract x because i is not started with 0)
-					LCDbuffer[i][j]|=byte>>(8-yr);  //write data into display buffer, but shifted if it is needed
-					LCDsend(LCDbuffer[i][j],1); //send the changed pages of the buffer to the display
-				}
-				n=1; //next step is shifting the char the other direction
-
-				if(j<pe-1)
-					j--;  //the page recently filled has content from last part, the rest would remain empty.
-						  //Because of that, the page is decremented, because in next loop the page is inceased again to the
-						  //actual written page. New data is written into same page
-			}
-		}
+	// Set address
+	LCDsetAddress(row,col);
+	
+	// Send character
+	if (style == INVERSE){ 
+		for (b = 0; b < 6; b++) { LCDsend(FONT6x8[h + b] ^ 0xFF,LCD_DATA); }
 	}
-	else //another linkmode, data is addad with xor
-	{
-		for(j=ps; j<pe;j++)  //loop starting first page to last page
-		{
-			//Set coloumn adress
-			LCDsend(x&0x0F,0); 	   //LSB adress
-			LCDsend(0x10+(x>>4),0); //MSB adress
-
-			//set page adress
-			LCDsend(0xB0+j,0);
-
-			font_pos+=font[4]; //set new postion of data pointer to get next data for one page
-
-			if(n) //jump alternating in if clause or else clause
-			{
-				for(i=x; i<font[4]+x; i++) //loop starting first colomn to last coloumn
-				{
-					byte=font[font[i]+font_pos-x]; //get data from font buffer (subtract x because i is not started with 0)
-					LCDbuffer[i][j]^=byte<<yr;      //write data into display buffer, but shifted if it is needed
-					LCDsend(LCDbuffer[i][j],1); //send the changed pages of the buffer to the display
-				}
-
-				if(yr) //next step is shifting the char the other direction, if the char is not writtin whithin one page
-					n=0;
-			}
-			else //shift the char another direction
-			{
-				font_pos-=font[4]; //set new postion of data pointer to get next data for one page (substract because it
-												   //is added again in next loop
-				for(i=x; i<font[4]+x; i++)
-				{
-					byte=font[font[i]+font_pos-x]; //get data from font buffer (subtract x because i is not started with 0)
-					LCDbuffer[i][j]^=byte>>(8-yr);	  //write data into display buffer, but shifted if it is needed
-					LCDsend(LCDbuffer[i][j],1);  //send the changed pages of the buffer to the display
-				}
-				n=1; //next step is shifting the char the other direction
-
-				if(j<pe-1)
-					j--; //the page recently filled has content from last part, the rest would remain empty.
-						 //Because of that, the page is decremented, because in next loop the page is inceased again to the
-						 //actual written page. New data is written into same page
-			}
-		}
+	else { 
+		for (b = 0; b < 6; b++) { LCDsend(FONT6x8[h + b],LCD_DATA); }
 	}
 }
 
@@ -1440,50 +1465,48 @@ LCDchar(uint8_t x, uint8_t y, uint8_t data, uint8_t *font, uint8_t linkmode)
 //
 //*****************************************************************************
 void
-LCDstring(uint8_t x, uint8_t y, char *data, uint8_t *font, uint8_t linkmode)
+LCDstring(uint8_t row, uint8_t col, char *word, uint8_t style)
 {
-	//i is index variable
-	//xe, ye is endpostion of string
-	//length is number of chars
-	uint8_t i=0, xe=0, ye=0, length=0;
+	// Each Character consists of 6 Columns on 1 Page
+	// Each Page presents 8 pixels vertically (top = MSB)
+	uint8_t a = 0;
 
-	if(linkmode==DELETE)
+	// Row boundary check
+	if (row > 7) { row = 7; }
+	// Column boundary check
+	if (col > 101) { col = 101; }
+
+	while (word[a] != 0)
 	{
-		//get number of chars
-		while(data[i])
+		// check for line feed '/n'
+		if (word[a] != 0x0A)
 		{
-			i++;
-		}
-		length=i;
+			//check for carriage return '/r' (ignore if found)
+			if (word[a] != 0x0D)
+			{
+				//Draw a character
+				LCDchar(row, col, word[a], style);
 
-		xe=length*font[4]+x;	//claculate length of string
-		ye=y+font[5];			//calcutlate hight of string
-		LCDclear(x,y,xe,ye);					//clear a rectangle where the string is printed later on
-	}
-	else if(linkmode==INVERS)
-	{
-		//get number of chars
-		while(data[i])
+				//Update location
+				col += 6;
+
+				//Text wrapping
+				if (col >= 102)
+				{
+					col = 0;
+					if (row < 7) { row++; }
+					else { row = 0; }
+				}
+			}
+		}
+		// handle line feed character
+		else
 		{
-			i++;
+			if (row < 7) { row++; }
+			else { row = 0; }
+			col = 0;
 		}
-		length=i;
-
-		xe=length*font[4]+x; //claculate length of string
-		ye=y+font[5];		 //calcutlate hight of string
-		LCDfill(x,y,xe,ye); //fill a rectangle where the string is printed later on
-	}
-	else
-	{
-	 //other modes
-	}
-
-	i=0; //reset i
-	while(data[i])
-	{
-		LCDchar(x,y,data[i], font, linkmode); //write single char
-		x+=font[4]; //calculate next x postion for next char
-		i++;
+		a++;
 	}
 }
 
@@ -1492,73 +1515,62 @@ LCDstring(uint8_t x, uint8_t y, char *data, uint8_t *font, uint8_t linkmode)
 // PRINT LINE TO LCD
 //
 //*****************************************************************************
-void 
-LCDline(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye)
+void
+LCDline(uint8_t xPxStart, uint8_t yPxStart, uint8_t xPxEnd, uint8_t yPxEnd)
 {
-	//i,j are index variables
-	//ps, pe are page start and endadress
-	//yr is restpixels
-	uint8_t i=0,j=0, ps=0, pe=0, yr=0;
+	unsigned char LCDbuffer[XPIXEL][YPIXEL/8];
+	uint8_t iCol=0,iPg=0,pgStart=0,pgEnd=0,skipPx=0;
+	uint8_t maskPx = 0xFF;	// Mask when first and last pixel are on start page
+	
+	// Calculate start and end pages
+	pgStart=yPxStart/8;
+	pgEnd=yPxEnd/8;
 
-	ps=ys/8; //calculate startpage
-	pe=ye/8; //calculate endpage
+	// Set address of start page
+	LCDsetAddress(pgStart,xPxStart);	// Set address
 
-	//-------------Starpage--------------
-	//Set coloumn adress
-	LCDsend(xs&0x0F,0); 	   //LSB adress
-	LCDsend(0x10+(xs>>4),0);//MSB adress
+	// Find start within first page
+	skipPx=yPxStart%8;
 
-	//set page adress
-	LCDsend(0xB0+ps,0);
-
-	yr=ys%8; //calculate the start within first page
-
-	if (ys==ye) //horizontal line
-	{
-		for(i=xs; i<=xe; i++) //loop starting first colomn to last coloumn
+	/// HORIZONTAL LINE
+	if ( yPxStart == yPxEnd ){
+		// Loop from first to last column
+		for(iCol=xPxStart; iCol<=xPxEnd; iCol++)
 		{
-			LCDbuffer[i][ps]|=0x01<<yr;     //fill the buffer
-			LCDsend(LCDbuffer[i][ps],1);//send the changed pages of the buffer to the display
+			LCDbuffer[iCol][pgStart]|=0x01<<skipPx;	// Fill buffer
+			LCDsend(LCDbuffer[iCol][pgStart],1);	// Send buffer to display
 		}
 	}
-	else //vertical line
-	{
-		i=0xFF; //use i as buffer
-		if (ps == pe) //if line is only in one page, you have to make sure
-					  //that you only fill a apart of the page
+	/// VERTICAL LINE
+	else {
+		// START PAGE
+		// Find stop within first page (if first and last pixel are on same page)
+		if (pgEnd == pgStart) { maskPx=yPxEnd%8-0xFF; }
+		
+		// Fill appropriate parts
+		LCDbuffer[xPxStart][pgStart]|=maskPx<<skipPx;
+		LCDsend(LCDbuffer[xPxStart][pgStart],1);
+		
+		// If line is only one page, exit function here
+		if (pgEnd == pgStart) { return; }
+		
+		// LAST PAGE
+		LCDsetAddress(pgEnd,xPxStart);	// Set address
+		
+		// Find stop within last page
+		skipPx=yPxEnd%8;
+		
+		// Fill appropriate parts
+		LCDbuffer[xPxStart][pgEnd]|=(0xFF>>(8-skipPx-1));
+		LCDsend(LCDbuffer[xPxStart][pgEnd],1);
+		
+		// MIDDLE PAGES
+		for(iPg=pgStart+1; iPg<pgEnd; iPg++)
 		{
-			i=ye%8-0xFF; //calculate stop within first page
-		}
-		//Fill part of startpage
-		LCDbuffer[xs][ps]|=i<<yr;        //fill the buffer
-		LCDsend(LCDbuffer[xs][ps],1);//send the changed pages of the buffer to the display
+			LCDsetAddress(iPg,xPxStart);	// Set address
 
-		if(ps==pe) //if line is only in one page, you can leave funtion here.
-		 return;
-
-		//Fill part of endpage
-		//Set coloumn adress
-		LCDsend(xs&0x0F,0);      //LSB adress
-		LCDsend(0x10+(xs>>4),0);	//MSB adress
-		//set page adress
-		LCDsend(0xB0+pe,0);
-
-		yr=ye%8; //calculate the stop within last page
-		LCDbuffer[xs][pe]|=(0xFF>>(8-yr)); //fill the buffer
-		LCDsend(LCDbuffer[xs][pe],1);	//send the changed pages of the buffer to the display
-
-		//-------------------Fill middle pages----------------------
-		for(j=ps+1; j<pe; j++) //loop starting first middle page to last middle page
-		{
-			//Set coloumn adress
-			LCDsend(xs&0x0F,0); 	    //LSB adress
-			LCDsend(0x10+(xs>>4),0); //MSB adress
-
-			//set page adress
-			LCDsend(0xB0+j,0);
-
-			LCDbuffer[xs][j]=0xFF;//fill the buffer
-			LCDsend(0xFF,1);   //fill display same as LCDsend(LCDbuffer[i][j]);
+			// Fill appropriate parts (no need for buffer as we're filling all)
+			LCDsend(0xFF,1);
 		}
 	}
 }
@@ -1569,12 +1581,18 @@ LCDline(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye)
 //
 //*****************************************************************************
 void 
-LCDrect(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye)
+LCDrect(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2)
 {
-	LCDline(xs, ys, xe, ys); //upper line
-	LCDline(xs, ye, xe, ye); //lower line
-	LCDline(xs, ys, xs, ye); //left line
-	LCDline(xe, ys, xe, ye); //right line
+	// (x1,y1)-------------(x2,y1)
+	//    |                   |
+	//    |                   |
+	//    |                   |
+	// (x1,y2)-------------(x2,y2)
+	
+	LCDline(x1, y1, x2, y1);	// Top
+	LCDline(x1, y2, x2, y2);	// Bottom
+	LCDline(x1, y1, x1, y2);	// Left
+	LCDline(x2, y1, x2, y2);	// Right
 }
 
 //!*****************************************************************************
@@ -1584,50 +1602,62 @@ int
 main(void)
 {
 	char aString[2][128];				// Generic string
-	int msgOpen = 0;					// Keep track of which message we're processing
-	int k;								// Generic counter
+	int msgOpen = 0;					// Message being processed
+	int ctr1;							// Generic counter
 	volatile uint32_t ui32Loop;			// for time delay
+	uint32_t pui32ADC0Value[1];			// ADC0 data value
+	uint32_t ui32D0v;					// mV value on external input D0
+	char D0v[100];						// D0v stored as a string
 	
-	// Initial settings - from Anil
+	/// Initial settings - from Anil
 	ROM_FPUEnable();					// Enable floating point unit
 	ROM_FPULazyStackingEnable();		// Enable lazy stacking of FPU
 	ROM_IntMasterEnable();				// Enable processor interrupts
 	
-	// Enable device clocking
+	/// Enable device clocking
 	ROM_SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
 	
-	// Enable peripherals
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);			// EEPROM (2048 bytes in 32 blocks)
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);			// Pins: UART0 
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);			// Pins: UART1, GSM, Rel3N, I2C0SCL & SDA
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);			// Pins: Neopixel, keypad INT2
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);			// Pins: LCD screen
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);			// Pins: Rel1N, Rel2, Rel2N, Rel3, Rel4
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);			// Pins: RGB LED, Rel1, Rel4N
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_I2C0);				// I2C for MPR121 touchpad controller
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_SSI3);				// SSI3 for EA DOGS102W6 LCD display
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);			// Timer for keylock
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);			// Timer for keypad timeout
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);			// Console UART
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);			// GSM UART
+	/// Enable peripherals
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);		// ADC1
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);	// EEPROM (2048 bytes in 32 blocks)
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);	// Pins: UART0 
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);	// Pins: UART1, GSM, Rel3N, I2C0SCL & SDA
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);	// Pins: Neopixel, keypad INT2
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);	// Pins: LCD screen
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);	// Pins: Rel1N, Rel2, Rel2N, Rel3, Rel4
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);	// Pins: RGB LED, Rel1, Rel4N
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_I2C0);		// I2C for MPR121 touchpad controller
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_SSI3);		// SSI3 for EA DOGS102W6 LCD display
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);	// Timer for keylock
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);	// Timer for keypad timeout
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);	// Console UART
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);	// GSM UART
     
-	// Configure GPIO outputs (disable neopixel, relays one and four in current hardware version)
-	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_5);							//Rel3N
-	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_6);							//GSM PWRKEY
-	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_7);							//GSM RESET
-	//ROM_GPIOPinTypeGPIOOutput(GPIO_PORTC_BASE, GPIO_PIN_4);						//Neopixel
-	//ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_1);						//Rel4
-	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_2);							//Rel3
-	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_3);							//Rel2
-	//ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_4);						//Rel1N
-	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_5);							//Rel2N
+	/// Configure GPIO outputs (disable neopixel, relays one and four in current hardware version)
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_5);		//Rel3N
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_6);		//GSM PWRKEY
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_7);		//GSM RESET
+	//ROM_GPIOPinTypeGPIOOutput(GPIO_PORTC_BASE, GPIO_PIN_4);	//Neopixel
+	//ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_1);	//Rel4
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_2);		//Rel3
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_3);		//Rel2
+	//ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_4);	//Rel1N
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_5);		//Rel2N
 	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);	//RGB LED (PF1=Rel1)
-	//ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_4);						//Rel4N/USR SW1
+	//ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_4);	//Rel4N/USR SW1
 	
-	relayOff(0);										// Turn the relays off initially
-	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);		// Turn on an LED to show that we're working
+	// Turn on an LED to show that we're working
+	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);
+	
+	// Start the LCD display
+	initSSI3();			// Start SSI3/SPI for sending data to LCD
+	initLCD();			// Start the LCD screen
+	
+	// Turn the relays off initially
+	relayOff(0);
 
-	// Console UART0: Set PA0 and PA1 as UART0, configure for 115200, 8-N-1 operation, enable interrupts
+	// Console UART0: Set PA0 and PA1 as UART0, configure for 115200, 
+	// 8-N-1 operation, enable interrupts
 	ROM_GPIOPinConfigure(GPIO_PA0_U0RX);
 	ROM_GPIOPinConfigure(GPIO_PA1_U0TX);
 	ROM_GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
@@ -1635,7 +1665,8 @@ main(void)
 	ROM_IntEnable(INT_UART0);
 	ROM_UARTIntEnable(UART0_BASE, UART_INT_RX | UART_INT_RT);  
 
-	// GSM UART1: Set PB0 and PB1 as UART1, configure for 115200, 8-N-1 operation, enable interrupts
+	// GSM UART1: Set PB0 and PB1 as UART1, configure for 115200, 
+	// 8-N-1 operation, enable interrupts
 	ROM_GPIOPinConfigure(GPIO_PB0_U1RX);
 	ROM_GPIOPinConfigure(GPIO_PB1_U1TX);
 	ROM_GPIOPinTypeUART(GPIO_PORTB_BASE, GPIO_PIN_0 | GPIO_PIN_1);
@@ -1644,9 +1675,10 @@ main(void)
 	ROM_UARTIntEnable(UART1_BASE, UART_INT_RX | UART_INT_RT);     
 
 	// Notify the user what's going on
-	UART0printf("\n\n\n\r>>> INITIALIZING ");
+	UART0printf("\n\n\n\r>>> INITIALIZING");
+	LCDstring(5,0,"INITIALIZING...",NORMAL);
 	
-	// Notify the user what's active
+	// Notify the user what testing functions are active
 	UART0printf("\n\r> ----------Testing function status:----------");
 	if (testGSM) { UART0printf("\n\r> ENABLED : GSM power at boot"); }
 	else {UART0printf("\n\r> DISABLED: GSM power at boot");}
@@ -1660,19 +1692,17 @@ main(void)
 	else {UART0printf("\n\r> DISABLED: Message controller at boot");}
 	if (testI2C) { UART0printf("\n\r> ENABLED : Activate touchpad"); }
 	else {UART0printf("\n\r> DISABLED: Activate touchpad");}
-	if (testLCD) { UART0printf("\n\r> ENABLED : LCD display"); }
-	else {UART0printf("\n\r> DISABLED: LCD display");}
 	UART0printf("\n\r> --------------------------------------------");
 	
-	// GSM TEST AREA: Make sure GSM is on and get the time.
+	/// GSM TEST AREA: Make sure GSM is on and get the time.
 	if (testGSM){
 		UART0printf("\n\r> Checking to see if GSM is on...");
 		// Find out if the GSM module is on - check three times
-		for (k=1; k<4; k++){
-			UART0printf( "\n\r> Check %u of 3...\n\r", k );
+		for (ctr1=1; ctr1<4; ctr1++){
+			UART0printf( "\n\r> Check %u of 3...\n\r", ctr1 );
 			if ( GSMcheckPower() )
 			{
-				blinkLED(5,3,'B');
+				blinkLED(5,3,BL_LED);
 				UART0printf("\n\r> GSM is ON.");
 				break;
 			}
@@ -1680,15 +1710,16 @@ main(void)
 			{
 				UART0printf("\n\r> GSM is OFF, turning on...");
 				GSMtogglePower();
-				// Delay for a bit, check again. Keep this delay long enough for GSM to get the time.
+				// Delay for a bit, check again. Keep this delay long 
+				// enough for GSM to get the time.
 				for(ui32Loop = 0; ui32Loop < 3000000; ui32Loop++){}
 				UART1printf("AT\r");
 				if (GSMoff){ UART0printf("\n\r> Power on failed!"); }
 			}
 		}
-		if ( k == 4 ){
+		if ( ctr1 == 4 ){
 			GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
-			blinkLED(10,3,'R');
+			blinkLED(10,3,RD_LED);
 			GPIOPinWrite(GPIO_PORTF_BASE, RD_LED, RD_LED);
 			UART0printf("\n\r> Cannot power on the GSM! \n\r>>> ENDING PROGRAM");
 			return 0;
@@ -1698,9 +1729,11 @@ main(void)
 		UART0printf("\n\r> Getting date/time from the GSM module");
 		GSMcheckTime();
 		UART0printf("\n\r> Timestamp: %s",fullTimestamp);
+		LCDstring(6,0,fullTimestamp,NORMAL);
 	}
 
-	// EEPROM TEST AREA: Store on-time, retrieve last on-time. Don't run this each time 'cause EEPROM wears out.
+	/// EEPROM TEST AREA: Store on-time, retrieve last on-time. 
+	// Don't run this each time 'cause EEPROM wears out.
 	if (testEEPROM){
 		EEPROMInit();
 		struct eprom_timestamp eprom_writetime = {YY,MM,DD,hh,mm,ss,zz};
@@ -1717,21 +1750,22 @@ main(void)
 		UART0printf("E2> EEPROM Blok Count: %d\n", e2block);*/
 	}
 	
-	// RELAY TEST AREA: Cycle on/off, flash green when turning on, red for off.
+	/// RELAY TEST AREA: Cycle on/off, flash green when turning on, red for off.
 	if (testRelay) {
 		UART0printf("\n\r> RELAY TESTING:");
-		for(ui32Loop = 0; ui32Loop < 1000000; ui32Loop++){}		// Delay for a bit (so you can grab your multimeter)
-		for (k=1; k<5; k++){
-			UART0printf("\n\r> RELAY %u: ON...",k);
-			relayOn(k);
-			blinkLED(7,3,'G');
+		// Delay for a bit (so you can grab your multimeter)
+		for(ui32Loop = 0; ui32Loop < 1000000; ui32Loop++){}
+		for (ctr1=1; ctr1<5; ctr1++){
+			UART0printf("\n\r> RELAY %u: ON...",ctr1);
+			relayOn(ctr1);
+			blinkLED(7,3,GN_LED);
 			UART0printf("OFF");
-			relayOff(k);
-			blinkLED(7,3,'R');
+			relayOff(ctr1);
+			blinkLED(7,3,RD_LED);
 		}
 	}
 		
-	// TOUCHPAD TEST AREA
+	/// TOUCHPAD TEST AREA
 	if (testI2C){
 		// Start I2C module
 		initI2C();
@@ -1749,31 +1783,8 @@ main(void)
 		ROM_TimerIntEnable(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
 	}
 	
-	// LCD TEST AREA
-	if (testLCD){
-		initSSI3();			// Start SSI3/SPI for sending data to LCD
-		UART0printf("\n\r> SPI 3 initiated...");
-		initLCD();			// Start the LCD screen
-		UART0printf("\n\r> EA DOGS102W6 LCD display initiated...");
-		
-		//Printing a line in big fonts, inverted
-		//LCDstring(0,5,"EA DOGS102-6!", ptr_font_8x16, INVERS); 
-		//Printing next line small fonts, normal
-		//LCDstring(0,5 + (uint8_t)ptr_font_8x16 + 5, "this is next line", ptr_font_6x8, DELETE);
-		//loop to make a line consisting of small rectangles
-		k=0;
-		while (k<XMAX) //loop to make a line consisting of small rectangles
-		{
-			//LCDrect(k,32,k+4,32+4); //Making small rectangles as line
-			k+=8;
-		}
-		
-		/*for(countTx=88;countTx<=XMAX;countTx++){
-			LCDclear(62,62,countTx,YMAX);
-			UART0printf("\n\r> x = %u",countTx);
-			for(ui32Loop = 0; ui32Loop < 1000000; ui32Loop++){}
-		}*/
-	}
+	/// ADC TEST AREA
+	if (testADC){ ADCinit(); }	
 	
 	// Initialize the SysTick interrupt to process buttons
 	ButtonsInit();
@@ -1783,10 +1794,13 @@ main(void)
 	
 	// Setup complete!
 	UART0printf("\n\r> Setup complete! \n\r>>> RUNNING MAIN PROGRAM");
+	LCDstring(5,0,"COMPLETE!       ",NORMAL);
 	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
-	GPIOPinWrite(GPIO_PORTF_BASE, GN_LED, GN_LED);
-	talkMode = false;	// We were in talk mode during set-up to let SIM messages through, but now we don't want that.
-	
+	GPIOPinWrite(GPIO_PORTF_BASE, RD_LED, RD_LED);
+	blinkLED(5,5,GN_LED);
+	// We were in talk mode during set-up to let SIM messages 
+	// through, but now we don't want that.
+	talkMode = false;
 	// Tell the user about buttons
 	UART0printf("\n\r> Press left button to enter \"talk to GSM\" mode (blue LED)");
 	UART0printf("\n\r> Press right button to toggle power to GSM module (red LED)");
@@ -1803,22 +1817,56 @@ main(void)
 		GSMsendSMS( ctrlID, aString[1] );
 	}
 	
+	LCDstring(5,0,"                ",NORMAL);
+	LCDstring(7,0," KEYPAD LOCKED ", INVERSE);
+	
 	// MAIN LOOP - wait for new message notification and process
 	while(1){
 		// Process new messages.
 		if (msgCount > 0){
-			msgOpen = msgCount;				// Keep track of the message we're working on, in case the count updates
+			// Start working on the oldest message
+			msgOpen = msgCount;
 			msgCount--;
 			// Delay to let each message get printed to UART before going to the next
 			for(ui32Loop = 0; ui32Loop < 10000; ui32Loop++){}
-			GSMprocessMessage(msgOpen);			// Process message for envelope and content
+			// Process message for envelope and content
+			GSMprocessMessage(msgOpen);
+			// Turn on/off the appropriate relays
 			if (strstr(msgSender,ctrlID) != NULL && strlen(msgContent) == 4) {
-				for (k=0;k<4;k++){
-					if (msgContent[k] == '0') { relayOff(k+1); }
-					else if (msgContent[k] == '1') { relayOn(k+1); } 
+				for (ctr1=0;ctr1<4;ctr1++){
+					if (msgContent[ctr1] == '0') { relayOff(ctr1+1); }
+					else if (msgContent[ctr1] == '1') { relayOn(ctr1+1); } 
 				}
 			}
 		}
+		
+		// Update the ADC
+		if (testADC){
+			// Trigger the ADC conversion.
+			ADCProcessorTrigger(ADC0_BASE, 3);
+			
+			// Wait for conversion to be completed.
+			while(!ADCIntStatus(ADC0_BASE, 3, false)){}
+
+			// Clear the ADC interrupt flag.
+			ADCIntClear(ADC0_BASE, 3);
+
+			// Read ADC Value.
+			ADCSequenceDataGet(ADC0_BASE, 3, pui32ADC0Value);
+			
+			// Convert to millivolts
+			ui32D0v = pui32ADC0Value[0] * (3300.0/4095);
+			
+			// Convert to a string
+			snprintf (D0v,100,"D0 = %d.%03d V", ui32D0v / 1000, ui32D0v % 1000);
+
+			// Display the AIN0 (PE0) digital value on the console.
+			LCDstring(6,0,D0v,NORMAL);
+
+			// Wait a bit
+			for(ui32Loop = 0; ui32Loop < 1000000; ui32Loop++){}
+		}
+		
 	}
 	//return(0);
 }
