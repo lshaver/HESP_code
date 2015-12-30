@@ -142,7 +142,7 @@ void LCDstring(uint8_t row, uint8_t col, char *word, uint8_t style);
 //!*****************************************************************************
 
 // TESTING VARIABLES: use these to disable code segments during testing
-bool testGSM =		1;				// Turn on the GSM during boot
+bool testGSM =		0;				// Turn on the GSM during boot
 bool testEEPROM =	1;				// Store/retrieve ontime from EEPROM 
 									// (requires testGSM)
 bool testDelete =	0;				// Delete messages during processing
@@ -150,12 +150,16 @@ bool testNotify =	0;				// Text the controller when coming on-line
 bool testADC =		1;				// Analog to Digital converter
 
 // Identifying constants
-char ctrlID[] = "3158078555";		// Phone number of the controller
+char ctrlID[] = "13158078555";		// Phone number of the controller
+char masterID[] = "00000000000";	// Phone number of the master device
+char slaveID1[] = "00000000000";	// Phone number of slave 1
+char slaveID2[] = "00000000000";	// Phone number of slave 2
+bool isMaster = true;				// Identify if this board is master or slave
 uint32_t boardID1;					// IDpt1 of MCU
 uint32_t boardID2;					// IDpt2 of MCU
 char IMEI[] = "000000000000000";	// SN of SIM module (equates to board ID)
 char SIMID[] = "NO SIM CARD";		// Phone number of SIM card
-int hwRev = 1;						// Hardware rev of this board
+int hwRev = 2;						// Hardware rev of this board
 
 // Status holders across functions
 bool GSMoff = true;					// Flag to see if the GSM module is on/off
@@ -193,17 +197,6 @@ char lastOnTime[23] = "\0";			// Previous ontime (from EEPROM)
 
 // For EEPROM
 uint32_t E2size,E2block;			// EEPROM block size and block count
-struct E2S_TIME						// Struct for writing timestamps to EEPROM
-{
-	int E2YY;
-	int E2MM;
-	int E2DD;
-	int E2hh;
-	int E2mm;
-	int E2ss;
-	int E2zz;
-}; 
-struct E2S_TIME E2readTime =  {0,0,0,0,0,0,0};		// Read time
 
 // For LCD: Font lookup table
 static const uint8_t FONT6x8[] = {
@@ -588,7 +581,7 @@ SysTickIntHandler(void)
 			// Check if the button has been held int32_t enough to act
 			if((ui32TickCounter % APP_BUTTON_POLL_DIVIDER) == 0)
 			{
-				blinkLED(3,2,RD_LED);
+				blinkLED(3,1,RD_LED);
 				UART0printf("\n\r> [Right button] Cycling power to GSM.");
 				GSMtogglePower();
 			}
@@ -639,7 +632,9 @@ ADCinit(void)
 	// sequence 0 has 8 programmable steps.  Since we are only doing a single
 	// conversion using sequence 3 we will only configure step 0.
 	if (hwRev == 1) { ADCSequenceStepConfigure(ADC0_BASE, 3, 0, ADC_CTL_CH3 | ADC_CTL_IE | ADC_CTL_END); }
-	else if (hwRev == 2) { ADCSequenceStepConfigure(ADC0_BASE, 3, 0, ADC_CTL_CH2 | ADC_CTL_IE | ADC_CTL_END); }
+	else if (hwRev == 2) { 
+		ADCSequenceStepConfigure(ADC0_BASE, 3, 0, ADC_CTL_CH2 | ADC_CTL_IE | ADC_CTL_END);
+	}
 	
 	// Enable sample sequence 3
 	ADCSequenceEnable(ADC0_BASE, 3);
@@ -929,7 +924,7 @@ GSMtogglePower( void )
 	// Set GSM reset low (must stay low to operate)
 	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_6, 0);
 	ROM_SysCtlDelay(ROM_SysCtlClockGet()/20);
-	UART0printf("\n\r--- 1/3 GSM RESET ASSERTED... ");
+	UART0printf("\n\r--- GSM RESET ASSERTED... ");
 	
 	// Set GSM power high for at least one second. This pulls down the actual 
 	// SIM900 power key.
@@ -940,12 +935,10 @@ GSMtogglePower( void )
 	
 	// PWRKEY de-asserted
 	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_7, 0);
-	UART0printf("\n\r--- 2/3 GSM POWER KEY TOGGLED: ");
+	UART0printf("\n\r--- GSM POWER KEY TOGGLED ");
 	
-	// Wait a bit, then confirm status
+	// Wait a bit before leaving
 	ROM_SysCtlDelay(ROM_SysCtlClockGet()/16);
-	if (!GSMoff){ UART0printf("\n\r--- 3/3 GSM POWER ON!"); }
-	else { UART0printf("\n\r--- 3/3 GSM POWER OFF!"); }
 }
 
 //*****************************************************************************
@@ -1155,10 +1148,7 @@ GSMprocessMessage( int msgNum )
 		if (msgPresent[oLoop])
 		{
 			// Store the message to one big string
-			strcpy(msgErrorCheck[oLoop], msgSender);
-			strcat(msgErrorCheck[oLoop], msgDate);
-			strcat(msgErrorCheck[oLoop], msgTime);
-			strcat(msgErrorCheck[oLoop], msgContent);
+			sprintf(msgErrorCheck[oLoop], "%s%s%s%s", msgSender, msgDate, msgTime, msgContent);
 			
 			// Check that string against previous copies from outer loop
 			for ( iLoop = 0; iLoop < oLoop; iLoop++ ) 
@@ -1240,16 +1230,15 @@ GSMparseMessage( int lineCount )
 			// Grab the time
 			msgTime = strtok(NULL,commaCh);
 			
-			// Store the number (with null terminator)
-			strncpy(msgSender,msgSender+2,11);
+			// Store the number (skip the "+")
+			msgSender += 2;
 			msgSender[11] = '\0';
 			
 			// Store the date (with null terminator)
-			strncpy(msgDate,msgDate+1,8);
+			msgDate++;
 			msgDate[8] = '\0';
 			
 			// Store the time (with null terminator)
-			strncpy(msgTime,msgTime,8);
 			msgTime[8] = '\0';
 		}
 		
@@ -1382,6 +1371,8 @@ GSMcheckBalance(void)
 	// The GSM module treats this as a message, not a response, so we have 
 	// to do this a bit differently than the GSMgetResponse function.
 	// +CUSD: 0,"Your account balance is 49.10 USD and will expire on 04/03/16.",64
+	// Airtel response is simply:
+	// +CUSD: 4
 	while (readResponse && ctr < 20)
 	{
 		// Grab a line
@@ -1974,7 +1965,7 @@ int
 main(void)
 {
 	char aString[2][128];				// Generic string
-	int anInt;						// Generic int
+	int anInt;							// Generic int
 	int msgOpen = 0;					// Message being processed
 	int ctr1;							// Generic counter
 	uint32_t pui32ADC0Value[1];			// ADC0 data value
@@ -1989,7 +1980,7 @@ main(void)
 	ROM_SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
 	
 	// Enable peripherals
-	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);		// ADC1
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_ADC0);		// ADC0
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_EEPROM0);	// EEPROM (2048 bytes in 32 blocks)
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);	// Pins: UART0 
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);	// Pins: UART1, GSM, Relays, I2C0SCL & SDA
@@ -2157,8 +2148,9 @@ main(void)
 	else {UART0printf("\n\r> DISABLED: Test ADC");}
 	UART0printf("\n\r> --------------------------------------------");
 	
-	// Initialize the SysTick interrupt to process buttons
-	ButtonsInit();
+	// Initialize the SysTick interrupt to process buttons 
+	// Need to remove button functionality and duplicate on touchpad, as buttons interfere with relays, and won't be available to users anyway once the board is inside of an enclosure.
+	//ButtonsInit();
 	SysTickPeriodSet(SysCtlClockGet() / APP_SYSTICKS_PER_SEC);
 	SysTickEnable();
 	SysTickIntEnable();
@@ -2173,14 +2165,14 @@ main(void)
 	{
 		EEPROMInit();
 
-		struct E2S_TIME E2writeTime = {YY,MM,DD,hh,mm,ss,zz};
+		//struct E2S_TIME E2writeTime = {YY,MM,DD,hh,mm,ss,zz};
 		
 		//Read from struct at EEPROM start from 0x0000
-		EEPROMRead((uint32_t *)&E2readTime, E2A_ONTIME, sizeof(E2readTime));
-		UART0printf("\n\r> Last on-time: %u/%u/%u, %u:%u:%u, %d", E2readTime.E2YY, E2readTime.E2MM, E2readTime.E2DD, E2readTime.E2hh, E2readTime.E2mm, E2readTime.E2ss, E2readTime.E2zz, E2A_ONTIME);
+		//EEPROMRead((uint32_t *)&E2readTime, E2A_ONTIME, sizeof(E2readTime));
+		//UART0printf("\n\r> Last on-time: %u/%u/%u, %u:%u:%u, %d", E2readTime.E2YY, E2readTime.E2MM, E2readTime.E2DD, E2readTime.E2hh, E2readTime.E2mm, E2readTime.E2ss, E2readTime.E2zz, E2A_ONTIME);
 		
 		//Write struct to EEPROM start from 0x0000
-		EEPROMProgram((uint32_t *)&E2writeTime, E2A_ONTIME, sizeof(E2writeTime));
+		//EEPROMProgram((uint32_t *)&E2writeTime, E2A_ONTIME, sizeof(E2writeTime));
 	
 		// Some EEPROM functions
 		/*esize = EEPROMSizeGet(); // Get EEPROM Size 
@@ -2189,11 +2181,6 @@ main(void)
 		UART0printf("E2> EEPROM Blok Count: %d\n", e2block);*/
 		
 	}
-	
-	// Wait for user to proceed
-	LCDstring(6,0,"Touch keypad to  continue",NORMAL);
-	UART0printf("\n\r> Touch keypad to continue");
-	while ( GPIOIntStatus(GPIO_PORTC_BASE,GPIO_PIN_7) == 0 ) {}
 	
 	// Clear the LCD and set up for normal use:
 	LCDclear(0,0,XMAX,YMAX);
@@ -2252,7 +2239,7 @@ main(void)
 	// 2. Update ADC.
 	while(1){
 		// Process new messages.
-		if (msgCount > 0)
+		while (msgCount > 0)
 		{
 			// Start working on the oldest message
 			msgOpen = msgCount;
