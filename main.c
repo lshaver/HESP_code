@@ -538,67 +538,7 @@ KeyPressTimer0IntHandler(void)
 //*****************************************************************************
 void
 SysTickIntHandler(void)
-{
-	static uint32_t ui32TickCounter;
-	uint32_t ui32Buttons;
-	static volatile uint32_t ui32HibMMdeEntryCount;
-	
-	// Get the button state
-	ui32Buttons = ButtonsPoll(0,0);
-    ui32TickCounter++;
-
-    switch(ui32Buttons & ALL_BUTTONS)
-    {
-		case LEFT_BUTTON:	// TOGGLE "TALK TO GSM" MODE
-			// Check if the button has been held int32_t enough to act
-			if((ui32TickCounter % APP_BUTTON_POLL_DIVIDER) == 0)
-			{
-				// Switch modes depending on current state
-				if (talkMode == false)
-				{
-					// Get LED status and store. Turn on blue LED.
-					buttonLEDhold = GPIOPinRead(GPIO_PORTF_BASE, LED_MAP);
-					GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, 0);
-					GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);
-					UART0printf("\n\r> [Left button] Entering talk to GSM mode. Press left button to end.");
-					talkMode = true;
-				}
-				else
-				{
-					UART0printf("\n\r> [Left button] Returning to main program.");
-					
-					// Restore LED status
-					GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, buttonLEDhold);
-					talkMode = false;
-					
-					// Get the GSM signal strength and print to LCD
-					GSMcheckSignal();
-				}
-			}
-			break;
-
-		case RIGHT_BUTTON:	// TOGGLE POWER TO GSM MODULE
-			// Check if the button has been held int32_t enough to act
-			if((ui32TickCounter % APP_BUTTON_POLL_DIVIDER) == 0)
-			{
-				blinkLED(3,1,RD_LED);
-				UART0printf("\n\r> [Right button] Cycling power to GSM.");
-				GSMtogglePower();
-			}
-			break;
-
-		case ALL_BUTTONS:	// DO NOTHING
-			// Both buttons for longer than debounce time
-			if(ui32HibMMdeEntryCount < APP_HIB_BUTTON_DEBOUNCE)
-			{
-				UART0printf("\n\r> [Both buttons] No action defined.");
-			}
-			break;
-
-		default:
-			break;
-    }
-}
+{}
 
 //!*****************************************************************************
 //! FUNCTIONS
@@ -614,33 +554,60 @@ void
 ADCinit(void)
 {
 	// Rev 1: Set PE0 (External D0) as the ADC pin
-	// Rev 2: Set PE1 (unnassigned) as the ADC pin
 	if (hwRev == 1) { GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_0); }
-	else if (hwRev == 2) { GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_1); }
+	// Rev 2:
+	else if (hwRev == 2) { 
+		GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_1);	// VOLTS (unnassigned)
+		GPIOPinTypeADC(GPIO_PORTB_BASE, GPIO_PIN_4);	// AMPS (audio in)
+		GPIOPinTypeADC(GPIO_PORTD_BASE, GPIO_PIN_2);	// WATTS (LCD Rx [unused])
+	}
 	
-	// Enable sample sequence 3 with a processor signal trigger.  Sequence 3
-	// will do a single sample when the processor sends a signal to start the
-	// conversion.  Each ADC module has 4 programmable sequences, sequence 0
-	// to sequence 3.  This example is arbitrarily using sequence 3.
-	ADCSequenceConfigure(ADC0_BASE, 3, ADC_TRIGGER_PROCESSOR, 0);
+	// Enable sample sequence 0,1,2 for the three input signals. Each ADC module 
+	// has 4 programmable sequences, sequence 0 to sequence 3. Sequencer zero captures
+	// up to eight samples, sequencers one and two capture up to four samples, and 
+	// sequencer three captures a single sample. Priorities are arranged volts, amps, 
+	// watts.
+	ADCSequenceConfigure(ADC0_BASE, 0, ADC_TRIGGER_PROCESSOR, 0); //sequencer 0 (V)
+	ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_PROCESSOR, 1); //sequencer 1 (A)
+	ADCSequenceConfigure(ADC0_BASE, 2, ADC_TRIGGER_PROCESSOR, 2); //sequencer 2 (W)
 	
 	// Configure step 0 on sequence 3.  Sample channel 3 (ADC_CTL_CH3) in
 	// single-ended mode (default) and configure the interrupt flag
 	// (ADC_CTL_IE) to be set when the sample is done.  Tell the ADC logic
 	// that this is the last conversion on sequence 3 (ADC_CTL_END).  Sequence
 	// 3 has only one programmable step.  Sequence 1 and 2 have 4 steps, and
-	// sequence 0 has 8 programmable steps.  Since we are only doing a single
-	// conversion using sequence 3 we will only configure step 0.
-	if (hwRev == 1) { ADCSequenceStepConfigure(ADC0_BASE, 3, 0, ADC_CTL_CH3 | ADC_CTL_IE | ADC_CTL_END); }
-	else if (hwRev == 2) { 
-		ADCSequenceStepConfigure(ADC0_BASE, 3, 0, ADC_CTL_CH2 | ADC_CTL_IE | ADC_CTL_END);
+	// sequence 0 has 8 programmable steps.  
+	if (hwRev == 1) { 
+		ADCSequenceStepConfigure(ADC0_BASE, 3, 0, ADC_CTL_CH3 | ADC_CTL_IE | ADC_CTL_END); 
+		
+		// Enable sample sequencer
+		ADCSequenceEnable(ADC0_BASE, 3);
+		
+		// Clear interrupt flag before starting
+		ADCIntClear(ADC0_BASE, 3);
 	}
-	
-	// Enable sample sequence 3
-	ADCSequenceEnable(ADC0_BASE, 3);
-	
-	// Clear interrupt flag before starting
-	ADCIntClear(ADC0_BASE, 3);
+	else if (hwRev == 2) { 
+		// Sequencer 0 (V)
+		ADCSequenceStepConfigure(ADC0_BASE, 0, 0, ADC_CTL_CH2 | ADC_CTL_IE | ADC_CTL_END);
+		
+		// Sequencer 1 (A)
+		ADCSequenceStepConfigure(ADC0_BASE, 1, 0, ADC_CTL_CH10 | ADC_CTL_IE | ADC_CTL_END);
+		
+		// Sequencer 2 (W)
+		ADCSequenceStepConfigure(ADC0_BASE, 2, 0, ADC_CTL_CH5 | ADC_CTL_IE | ADC_CTL_END);
+		
+		// Enable sample sequencers
+		ADCSequenceEnable(ADC0_BASE, 0);
+		ADCSequenceEnable(ADC0_BASE, 1);
+		ADCSequenceEnable(ADC0_BASE, 2);
+		
+		// Clear interrupt flag before starting
+		ADCIntClear(ADC0_BASE, 0);
+		ADCIntClear(ADC0_BASE, 1);
+		ADCIntClear(ADC0_BASE, 2);
+	}
+
+
 }
 
 //*****************************************************************************
@@ -1967,7 +1934,7 @@ main(void)
 	char aString[2][128];				// Generic string
 	int anInt;							// Generic int
 	int msgOpen = 0;					// Message being processed
-	int ctr1;							// Generic counter
+	int ctr1,ctr2;						// Generic counter
 	uint32_t pui32ADC0Value[1];			// ADC0 data value
 	uint32_t ui32D0v;					// mV value on external input D0
 	
@@ -2237,6 +2204,7 @@ main(void)
 	/// MAIN LOOP - 
 	// 1. Wait for new message notification and process. 
 	// 2. Update ADC.
+	ctr2=0;
 	while(1){
 		// Process new messages.
 		while (msgCount > 0)
@@ -2267,29 +2235,33 @@ main(void)
 
 		// Run the ADC
 		if ( testADC && msgCount == 0 ) {
-			// Trigger the ADC conversion.
-			ADCProcessorTrigger(ADC0_BASE, 3);
-			
-			// Wait for conversion to be completed.
-			while(!ADCIntStatus(ADC0_BASE, 3, false)){}
+			// Cycle through the three ADCs (only working on hwRev 2)
+			for ( ctr1 = 0; ctr1 < 3; ctr1++ )
+			{
+				// Trigger the ADC conversion.
+				ADCProcessorTrigger(ADC0_BASE, ctr1);
+				
+				// Wait for conversion to be completed.
+				while(!ADCIntStatus(ADC0_BASE, ctr1, false)){}
 
-			// Clear the ADC interrupt flag.
-			ADCIntClear(ADC0_BASE, 3);
+				// Clear the ADC interrupt flag.
+				ADCIntClear(ADC0_BASE, ctr1);
 
-			// Read ADC Value.
-			ADCSequenceDataGet(ADC0_BASE, 3, pui32ADC0Value);
-			
-			// Convert to millivolts
-			ui32D0v = pui32ADC0Value[0] * (3300.0/4095);
-			
-			// Convert to a string (in volts, three decimal places)
-			snprintf (aString[1],7,"%d.%03dV", ui32D0v / 1000, ui32D0v % 1000);
+				// Read ADC Value.
+				ADCSequenceDataGet(ADC0_BASE, ctr1, pui32ADC0Value);
+				
+				// Convert to millivolts
+				ui32D0v = pui32ADC0Value[0] * (3300.0/4095);
+				
+				// Convert to a string (in volts, three decimal places)
+				snprintf (aString[1],7,"%d.%03dV", ui32D0v / 1000, ui32D0v % 1000);
 
-			// Display the AIN0 (PE0) digital value on the console.
-			LCDstring(2,11*6,aString[1],NORMAL);
+				// Display the AIN0 (PE0) digital value on the console.
+				LCDstring(2+ctr1,11*6,aString[1],NORMAL);
 
-			// Wait a bit
-			ROM_SysCtlDelay(ROM_SysCtlClockGet()/4);
+				// Wait a bit
+				ROM_SysCtlDelay(ROM_SysCtlClockGet()/4);
+			}
 		}
 	}
 	//return(0);
