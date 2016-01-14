@@ -19,7 +19,7 @@
 // Lee added these
 #include <ctype.h>
 #include <inttypes.h>
-#include <stdio.h>
+//#include <stdio.h>
 #include <stdlib.h>
 #include "stdio.h"
 #include "string.h"
@@ -30,7 +30,6 @@
 #include "driverlib/flash.h"
 #include "driverlib/i2c.h"
 #include "driverlib/ssi.h"
-//#include "driverlib/systick.h"
 #include "driverlib/timer.h"
 #include "inc/hw_gpio.h"
 #include "inc/hw_i2c.h"
@@ -70,7 +69,7 @@
 #define KP			0
 #define TOU_THRESH 	0x0F	// touch threshold
 #define REL_THRESH 	0x09	// release threshold
-#define HOLD_TIME	5/2		// time required to hold a key for it register as held
+#define HOLD_TIME	2		// time required to hold a key for it register as held
 #define IDLE_TIME	13		// time system waits to time out and lock keypad
 
 // For LCD screen
@@ -84,18 +83,18 @@
 #define INVERSE		2
 
 // ADC input channel definitions
-#define ADC_V		0	// Pin E1
-#define ADC_A		1	// Pin B4
-#define ADC_W		2	// Pin D2
+#define ADC_V		0		// Pin E1
+#define ADC_A		1		// Pin B4
+#define ADC_W		2		// Pin D2
 
 // STATE MACHINE THRESHOLDS
 #define ADC_V_TIME	1/1		// Battery voltage measurement period
 #define DCV_max		1547.7	// 330*(V at batt / V from ADC)
-#define TU1			1210	// S1    upper limit
+#define TU1			1210	// S1 upper limit
 #define TL2			1200	// S2 lower limit
-#define TU2			1260	// S2    upper limit
+#define TU2			1260	// S2 upper limit
 #define TL3			1250	// S3 lower limit
-#define TU3			1320	// S3    upper limit
+#define TU3			1320	// S3 upper limit
 #define TL4			1310	// S4 lower limit
 
 //!*****************************************************************************
@@ -134,6 +133,7 @@ bool GSMparseMessage(int lineCount );
 bool GSMsendSMS(char *destNbr, char *msgBody);
 int GSMcheckSignal(void);
 void GSMcheckBalance(void);
+void GSMcheckBalanceIndia(void);
 /// -- Keypad
 void initI2C(void);
 uint32_t I2Creceive(uint32_t slave_addr, uint8_t reg);
@@ -164,8 +164,6 @@ bool testEEPROM =	0;				// Store/retrieve ontime from EEPROM
 									// (requires testGSM)
 bool testDelete =	0;				// Delete messages during processing
 bool testNotify =	0;				// Text the controller when coming on-line
-bool testADC =		1;				// Analog to Digital converter
-bool testButtons =	0;				// Buttons are cross-wired with relays
 
 // STATE MACHINE SET-UP
 typedef enum
@@ -180,18 +178,14 @@ volatile battery_states state = S0_start;
 battery_states last_state = S0_start;
 
 // Identifying constants
-char ctrlID[] = "13158078555";		// Phone number of the controller
-char masterID[] = "00000000000";	// Phone number of the master device
-char slaveID1[] = "00000000000";	// Phone number of slave 1
-char slaveID2[] = "00000000000";	// Phone number of slave 2
-bool isMaster = true;				// Identify if this board is master or slave
+char ctrlID[] = "917337687672";		// Phone number of the controller
 uint32_t boardID1;					// IDpt1 of MCU
 uint32_t boardID2;					// IDpt2 of MCU
 char IMEI[] = "000000000000000";	// SN of SIM module (equates to board ID)
 char SIMID[] = "NO SIM CARD";		// Phone number of SIM card
 
 // Status holders across functions
-bool GSMoff = true;					// Flag to see if the GSM module is on/off
+volatile bool GSMoff = true;		// Flag to see if the GSM module is on/off
 bool talkMode = true;				// Allow user to interface directly with GSM
 bool SIMpresent = false;			// Flag to see if SIM is present - assume NO
 volatile bool msgFlag = false;		// Flag for new message indication from UART1 interrupt handler
@@ -209,7 +203,7 @@ uint32_t E2relayStatus=0;			// For reading/writing relay status to EEPROM
 // Keypad values and status
 static volatile bool heldKeyFlag=false;		// Flag for key held down
 static volatile bool keysUnlocked=false;	// Locked status of keypad
-static volatile bool touchFlag=true;		// Flag to see if a key was touched
+static volatile bool touchFlag=false;		// Flag to see if a key was touched
 static volatile bool keysIdleFlag=false;	// Flag to see if the keys are idle and need locking
 char pressedKey;							// The key which was just pressed
 char heldKey;								// The previously pressed key
@@ -225,6 +219,7 @@ unsigned char var;					// Incoming UART character
 unsigned char ptr[10000];			// Array for storing incoming UART characters
 unsigned long i;					// UART character pointer.
 unsigned long ulStatus0,ulStatus1;	// To hold the interrupt status
+char *msgCountStr;					// Number of new messages (string from UART)
 
 // Data from most recent incoming message stored here
 char responseLine[10][75];			// Use to store UART inputs
@@ -404,6 +399,8 @@ UARTIntHandler0(void)
 void
 UARTIntHandler1(void)
 {
+	static char g_cInput[128];			// String input to a UART
+
 	// Get the interrupt status.
 	ulStatus1 = ROM_UARTIntStatus(UART1_BASE, true);
 	
@@ -430,6 +427,13 @@ UARTIntHandler1(void)
 		{
 			if(ptr[i-3] == 'C' && ptr[i-2] == 'M' && ptr[i-1] == 'T'&& ptr[i] == 'I')
 			{
+				// Grab everything
+				UART1gets(g_cInput,sizeof(g_cInput));
+				
+				// Stop after newline character and store
+				msgCountStr = strtok(g_cInput,"\n");
+				
+				// Set a flag to notify user				
 				msgFlag = true;
 			}
 		}
@@ -475,7 +479,7 @@ Timer1KeysIdleIntHandler(void)
 	// Disable the timer
 	ROM_TimerDisable(TIMER1_BASE, TIMER_A);
 
-	// The timer is up! Lock the keypad
+	// The timer is up! Set a flag to lock the keypad
 	if (keysUnlocked){ keysIdleFlag = true; }
 }
 
@@ -532,8 +536,6 @@ initADC(void)
 	GPIOPinTypeADC(GPIO_PORTB_BASE, GPIO_PIN_4);	// AMPS (B4 - audio in)
 	GPIOPinTypeADC(GPIO_PORTD_BASE, GPIO_PIN_2);	// WATTS (D2 - LCD Rx [unused])
 
-	// Configure step 0 on sequence 3. 
-
 	// Enable sample sequence 0,1,2 for the three input signals. Each ADC module 
 	// has 4 programmable sequences, sequence 0 to sequence 3. Sequencer zero captures
 	// up to eight samples, sequencers one and two capture up to four samples, and 
@@ -543,15 +545,15 @@ initADC(void)
 	// (ADC_CTL_END).
 	
 	// Sequencer 0 (V)
-	ADCSequenceConfigure(ADC0_BASE, 0, ADC_TRIGGER_PROCESSOR, 0); //sequencer 0 (V)
+	ADCSequenceConfigure(ADC0_BASE, 0, ADC_TRIGGER_PROCESSOR, 0);
 	ADCSequenceStepConfigure(ADC0_BASE, 0, 0, ADC_CTL_CH2 | ADC_CTL_IE | ADC_CTL_END);
 	
 	// Sequencer 1 (A)
-	ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_PROCESSOR, 1); //sequencer 1 (A)
+	ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_PROCESSOR, 1);
 	ADCSequenceStepConfigure(ADC0_BASE, 1, 0, ADC_CTL_CH10 | ADC_CTL_IE | ADC_CTL_END);
 	
 	// Sequencer 2 (W)
-	ADCSequenceConfigure(ADC0_BASE, 2, ADC_TRIGGER_PROCESSOR, 2); //sequencer 2 (W)
+	ADCSequenceConfigure(ADC0_BASE, 2, ADC_TRIGGER_PROCESSOR, 2);
 	ADCSequenceStepConfigure(ADC0_BASE, 2, 0, ADC_CTL_CH5 | ADC_CTL_IE | ADC_CTL_END);
 	
 	// Enable sample sequencers
@@ -568,6 +570,7 @@ initADC(void)
 //*****************************************************************************
 //
 // RUN THE ADC
+// Currently we run this only on start-up for checking initial values
 //
 //*****************************************************************************
 void
@@ -1074,16 +1077,6 @@ GSMgetResponse(void)
 		
 		// If this line says OK we've got the whole message
 		if ( strncmp(responseLine[readLine],"OK",2) == 0 ){readResponse = false;}
-		
-		// If this line says "DST: " it means we just caught the network,
-		// and should signal (via returning 0) that the request should be
-		// sent again.
-		else if ( strncmp(responseLine[readLine],"DST: ",2) == 0 )
-		{ 
-			readLine = 0;
-			readResponse = false;
-		}
-		else { readLine++; }
 	}
 	
 	return readLine;
@@ -1142,6 +1135,7 @@ GSMgetIMEI(void)
 //*****************************************************************************
 //
 // GET SIM PHONE NUMBER
+// Does not work for Indian SIM
 //
 //*****************************************************************************
 void
@@ -1304,7 +1298,7 @@ GSMparseMessage( int lineCount )
 			
 			// Store the number (skip the "+")
 			msgSender += 2;
-			msgSender[11] = '\0';
+			msgSender[12] = '\0';
 			
 			// Store the date (with null terminator)
 			msgDate++;
@@ -1331,6 +1325,7 @@ GSMparseMessage( int lineCount )
 		// Proceed to next line
 		activeLine++;
 	}
+	
 	// If we didn't find an envelope, there's no message
 	if (msgEnvelope == NULL) { return false; }
 	
@@ -1443,8 +1438,6 @@ GSMcheckBalance(void)
 	// The GSM module treats this as a message, not a response, so we have 
 	// to do this a bit differently than the GSMgetResponse function.
 	// +CUSD: 0,"Your account balance is 49.10 USD and will expire on 04/03/16.",64
-	// Airtel response is simply:
-	// +CUSD: 4
 	while (readResponse && ctr < 20)
 	{
 		// Grab a line
@@ -1472,6 +1465,68 @@ GSMcheckBalance(void)
 	}
 	
 	// Notify user
+	UART0printf("\n\r> GSM BALANCE: %s %s expires on %s",balance,currency,expiry);
+}
+
+//*****************************************************************************
+//
+// GSM - CHECK BALANCE/NUMBER in INDIA
+// This doesn't work.
+//
+//*****************************************************************************
+void 
+GSMcheckBalanceIndia(void)
+{
+	bool readResponse = true;		// Keeps the loop open while getting message
+	char *GSMresponse = NULL;		// Use to grab input
+	static char g_cInput[128];		// String input to a UART
+	char expiry[] = "00/00/0000";	// Expiry date
+	char currency[] = "Rs.";		// Balance currency
+	char *ptr;						// Pointer for parsing balance message 
+	int ctr=0;						// For stepping through tokens
+	
+	// Ask GSM module for balance
+	UART1printf("ATD*111*2#\r");
+	
+	// Retrieve balance and expiry date from GSM:
+	// The GSM module treats this as a message, not a response, so we have 
+	// to do this a bit differently than the GSMgetResponse function.
+	// +CUSD: 1,"Balance for 9513055730 is Rs. 0.00. Account Exp Date 25/09/2021 23:59.
+	while (readResponse)
+	{
+		// Grab a line
+		UART1gets(g_cInput,sizeof(g_cInput));
+		
+		// Stop after newline
+		GSMresponse = strtok(g_cInput,"\n");
+		
+		// If this line says "Exp Date" it contains the balance
+		if ( strstr(GSMresponse,"Exp Date") != '\0' ){ readResponse = false; }
+	}
+
+	// Parse for data of interest
+	ctr = 0;
+	ptr = strtok (GSMresponse," ");
+	while (ptr != NULL){
+		ptr = strtok (NULL," ");
+		if (ctr == 2) { strcpy(SIMID,ptr); }
+		else if (ctr == 4) { strcpy(currency,ptr); }
+		else if (ctr == 5) { strcpy(balance,ptr); }
+		else if (ctr == 9) { strcpy(expiry,ptr); }
+		ctr++;
+	}
+	
+	// Get rid of period at end of balance amount
+	ctr = strlen(balance);
+	if (balance[ctr-1] == '.') { balance[ctr-1]  = 0; }
+	
+	// Exit the USSD menu
+	UART1printf("AT+CUSD=2\r");
+	
+	// Wait for confirmation that we have exited the USSD menu
+	GSMgetResponse();
+	
+	// Notify user of balance
 	UART0printf("\n\r> GSM BALANCE: %s %s expires on %s",balance,currency,expiry);
 }
 
@@ -2103,11 +2158,10 @@ main(void)
 	/// ***** VARIABLES *****
 	char aString[2][128];				// Generic string
 	int anInt=0;						// Generic int
-	char *msgCountStr;					// Number of new messages (string from UART)
 	int msgCount = 0;					// Number of new messages (int value)
 	int msgOpen=0;						// Message being processed
-	static char g_cInput[128];			// String input to a UART
 	int ctr1;							// Generic counter
+	char *ptr;							// Generic pointer
 	uint32_t ADCrawValue[1];			// Raw value from ADC
 	
 	/// ***** INITIAL SETTINGS AND PERIPHERAL ENABLING *****
@@ -2254,14 +2308,7 @@ main(void)
 		LCDstring(4,0,"...",NORMAL);
 		
 		// If SIM card is present, get the phone number and balance
-		if ( SIMpresent ) 
-		{ 
-			// Get number
-			GSMgetNum(); 
-			
-			// Get balance
-			GSMcheckBalance();
-		}
+		if ( SIMpresent ) { GSMcheckBalanceIndia(); }
 		
 		// Print phone number / SIM status to LCD
 		LCDstring(4,0,SIMID,NORMAL);
@@ -2333,7 +2380,8 @@ main(void)
 		relayStatus = 15-E2relayStatus;
 		UART0printf("\n\r> 15-E2relayStatus = %u",relayStatus);
 		
-		// Apply the previous relay states
+		// Apply the previous relay states (note we assume these states are already
+		// set based on latching, this is just a double-check).
 		relaySet(E2relayStatus);
 	}
 	
@@ -2344,11 +2392,11 @@ main(void)
 		GSMcheckSignal(); 
 		
 		// Print balance to LCD
-		LCDstring(1,(18-sizeof(balance))*6,"$",NORMAL);
-		LCDstring(1,(19-sizeof(balance))*6,balance,NORMAL);
+		LCDstring(1,(19-sizeof(balance))*6,"R",NORMAL);
+		LCDstring(1,(20-sizeof(balance))*6,balance,NORMAL);
 	}
 	
-	/// ***** LAST MINUTE PREP: *****
+	/// ***** FINAL PREP: *****
 	// Notify controller via SMS
 	if (testNotify && SIMpresent){ 
 		snprintf(aString[1],83,"MCU %X-%X IMEI %s OT %s BAL %s",boardID1,boardID2,IMEI,fullOnTime,balance);
@@ -2361,7 +2409,7 @@ main(void)
 	// Lock keypad
 	MPR121toggleLock();
 
-	// Set initial state
+	// Set initial battery state
 	state = S0_start;
 	
 	// Start the ADC timer
@@ -2391,12 +2439,13 @@ main(void)
 
 	/// MAIN PROGRAM
 	// Enter a never ending SUPERLOOP:
-	// 1) When ADC timer is up get ADC value and change state
-	// 2) Wait for user to touch keypad and process
-	// 3) Wait for user to long press keypad and process
-	// 4) See if the keypad is idle and we should lock it
-	// 5) See if there are any new message notifications
-	// 6) Process any new messages
+	// 1) When ADC timer is up get ADC value and change state as necessary
+	// 2) See if the state has changed and take appropriate actions
+	// 3) See if user has touched keypad and process
+	// 4) Wait for user to long press keypad and process
+	// 5) See if the keypad is idle and we should lock it
+	// 6) See if there are any new message notifications and get the count
+	// 7) Process any new messages
 	while (1) 
 	{
 		// Wait for the ADC to finish
@@ -2404,8 +2453,11 @@ main(void)
 		{
 			// Read ADC Value
 			ADCSequenceDataGet(ADC0_BASE, ADC_V, ADCrawValue);
+			
+			// Clear the ADC conversion flag
+			ADCIntClear(ADC0_BASE, ADC_V);
 
-			// Convert to millivolts
+			// Convert value to millivolts
 			DCV = ADCrawValue[0] * (DCV_max/4095);
 			
 			// Hold the current state
@@ -2413,23 +2465,26 @@ main(void)
 			
 			// Get the new state
 			BatteryStateMachine(DCV);
+		}
+		
+		// See if the state has changed, update relays appropriately
+		if (state != last_state) 
+		{ 
+			// Set the new mask
+			relayMask = relayPriorities[(int)state-1];
 			
-			// If the state has changed, update relay states/permissions
-			if (state != last_state) 
-			{ 
-				// Set the new mask
-				relayMask = relayPriorities[(int)state-1];
-				
-				// Set the relays
-				relaySet(relayMask & relayStatus); 
-			}
+			// Set the relays
+			relaySet(relayMask & relayStatus); 
 			
 			// Update battery voltage on display
 			snprintf (aString[1],11,"S%u: %d.%02dV ", (int)state, DCV / 100, DCV % 100);
 			LCDstring(5,0,aString[1],NORMAL);
-			
-			// Clear the ADC conversion flag
-			ADCIntClear(ADC0_BASE, ADC_V);
+		}
+		else
+		{
+			// Update battery voltage on display
+			snprintf (aString[1],11,"S%u: %d.%02dV ", (int)state, DCV / 100, DCV % 100);
+			LCDstring(5,0,aString[1],NORMAL);
 		}
 		
 		// See if there are any keypresses
@@ -2471,18 +2526,16 @@ main(void)
 		// See if there's a new message notification and get the message count
 		if (msgFlag)
 		{
-			// Grab everything
-			UART1gets(g_cInput,sizeof(g_cInput));
-			
-			// Stop after newline character
-			msgCountStr = strtok(g_cInput,"\n");
-			
-			// Parse out the message count (terminate with null to store)
-			strncpy(msgCountStr,msgCountStr+7,3);
-			msgCountStr[3]='\0';
-			
-			// Convert to integer
-			sscanf(msgCountStr, "%d", &msgCount);
+			ptr = msgCountStr;
+			// While message count is not populated...
+			while (*ptr)
+			{ 
+				// See if the ptr is at a number...
+				if (isdigit(*ptr)) { msgCount = strtol(ptr, &ptr, 10); }
+				
+				// Otherwise move to the next character.
+				else { ptr++; }
+			}
 			
 			// Tell the user
 			UART0printf("\n\r>>> %u NEW MESSAGE(S)",msgCount);
@@ -2510,11 +2563,11 @@ main(void)
 				relaySet(anInt);
 			}
 			
-			// After the last new message, update the balance and EEPROM
+			// After the last new message, update the EEPROM
 			if ( msgCount == 0 ) 
 			{ 
-				GSMcheckBalance();
-				relayStatusE2();
+				//GSMcheckBalanceIndia();
+				//relayStatusE2();
 			}
 		}
 	}
