@@ -19,10 +19,9 @@
 // Lee added these
 #include <ctype.h>
 #include <inttypes.h>
-//#include <stdio.h>
 #include <stdlib.h>
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 #include "uart0stdio.h"		// Console
 #include "uart1stdio.h"		// GSM
 #include "driverlib/adc.h"
@@ -70,7 +69,7 @@
 #define TOU_THRESH 	0x0F	// touch threshold
 #define REL_THRESH 	0x09	// release threshold
 #define HOLD_TIME	2		// time required to hold a key for it register as held
-#define IDLE_TIME	13		// time system waits to time out and lock keypad
+#define IDLE_TIME	20		// time system waits to time out and lock keypad
 
 // For LCD screen
 #define XPIXEL		102
@@ -89,64 +88,32 @@
 
 // STATE MACHINE THRESHOLDS
 #define ADC_V_TIME	1/1		// Battery voltage measurement period
-#define DCV_max		1547.7	// 330*(V at batt / V from ADC)
+#define DCV_max		1632.6	// 330*(V at batt / V from ADC)
 #define TU1			1210	// S1 upper limit
 #define TL2			1200	// S2 lower limit
-#define TU2			1260	// S2 upper limit
-#define TL3			1250	// S3 lower limit
-#define TU3			1320	// S3 upper limit
-#define TL4			1310	// S4 lower limit
+#define TU2			1310	// S2 upper limit
+#define TL3			1300	// S3 lower limit
+#define TU3			1350	// S3 upper limit
+#define TL4			1340	// S4 lower limit
 
 //!*****************************************************************************
-//! FUNCTION DEFINITIONS
+//! FUNCTION DECLARATIONS
 //!*****************************************************************************
 
-// Interrupt handlers
-void UARTIntHandler0(void);
-void UARTIntHandler1(void);
-void MPR121IntHandler(void);
-void Timer1KeysIdleIntHandler(void);
-void Timer0KeyHoldIntHandler(void);
-void Timer2ADCIntHandler(void);
-
-// Functions
-/// -- ADC and battery treatment
-void initADC(void);
-void ADCrun (int ADCchan);
-void BatteryStateMachine(uint32_t battV);
-void blinkLED (int blinkCount, int blinkSpeed, uint8_t LEDcolor);
 /// -- Relay handling
-void relayOn(int relayNum);
-void relayOff(int relayNum);
-void relayLatch(int relayNum);
-void relayToggle(int relayNum);
 void relaySet(uint32_t relayCmd);
-void relayStatusE2(void);
+
 /// -- GSM module
-bool GSMcheckPower (int checkCount);
 void GSMtogglePower(void);
-void GSMtoggleTalk(void);
 int GSMgetResponse(void);
-void GSMcheckTime(void);
-void GSMprocessMessage(int activeMsg );
 bool GSMparseMessage(int lineCount );
-bool GSMsendSMS(char *destNbr, char *msgBody);
 int GSMcheckSignal(void);
-void GSMcheckBalance(void);
-void GSMcheckBalanceIndia(void);
+
 /// -- Keypad
-void initI2C(void);
 uint32_t I2Creceive(uint32_t slave_addr, uint8_t reg);
-void I2Csend(uint8_t slave_addr, uint8_t num_of_args, ...);
-void initMPR121(void);
-void MPR121keypress(void);
-void MPR121toggleLock(void);
+
 /// -- LCD display
-void initSSI3(void);
-void SSI3sendByte(uint32_t theData);
-void initLCD(void);
 void LCDsend(uint32_t theData, uint8_t cmdByte);
-void LCDsetAddress(uint32_t page, uint32_t column);
 void LCDclear(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye);
 void LCDchar(uint8_t row, uint8_t col, uint16_t f, uint8_t style);
 void LCDstring(uint8_t row, uint8_t col, char *word, uint8_t style);
@@ -159,10 +126,10 @@ void LCDstring(uint8_t row, uint8_t col, char *word, uint8_t style);
 //!*****************************************************************************
 
 // TESTING VARIABLES: use these to disable code segments during testing
-bool testGSM =		0;				// Turn on the GSM during boot
+bool testGSM =		1;				// Turn on the GSM during boot
 bool testEEPROM =	0;				// Store/retrieve ontime from EEPROM 
 									// (requires testGSM)
-bool testDelete =	0;				// Delete messages during processing
+bool testDelete =	1;				// Delete messages during processing
 bool testNotify =	0;				// Text the controller when coming on-line
 
 // STATE MACHINE SET-UP
@@ -186,7 +153,7 @@ char SIMID[] = "NO SIM CARD";		// Phone number of SIM card
 
 // Status holders across functions
 volatile bool GSMoff = true;		// Flag to see if the GSM module is on/off
-bool talkMode = true;				// Allow user to interface directly with GSM
+bool debugMode = true;				// Allows direct interface with GSM, disables battery state machine
 bool SIMpresent = false;			// Flag to see if SIM is present - assume NO
 volatile bool msgFlag = false;		// Flag for new message indication from UART1 interrupt handler
 char balance[]="000.00";			// Remaining SIM balance
@@ -420,7 +387,7 @@ UARTIntHandler1(void)
 		ptr[i] = var;
 		
 		// In talk mode mirror to console...
-		if (talkMode) { ROM_UARTCharPutNonBlocking(UART0_BASE, ptr[i]); }
+		if (debugMode) { ROM_UARTCharPutNonBlocking(UART0_BASE, ptr[i]); }
 		
 		// ...or else see if it's a message notification (like +CMTI: "SM",12):
 		else 
@@ -467,24 +434,6 @@ MPR121IntHandler(void)
 
 //*****************************************************************************
 //
-// KEYPAD IDLE TIMER INTERRUPT HANDLER
-//
-//*****************************************************************************
-void
-Timer1KeysIdleIntHandler(void)
-{
-    // Clear the timer interrupt.
-	ROM_TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
-	
-	// Disable the timer
-	ROM_TimerDisable(TIMER1_BASE, TIMER_A);
-
-	// The timer is up! Set a flag to lock the keypad
-	if (keysUnlocked){ keysIdleFlag = true; }
-}
-
-//*****************************************************************************
-//
 // KEYPRESS TIMER INTERRUPT HANDLER
 //
 //*****************************************************************************
@@ -501,6 +450,24 @@ Timer0KeyHoldIntHandler(void)
 	// the main program. (Note that if the user is just rapidly pressing a key
 	// this could still work - but that's not a big concern.)
 	if (pressedKey == heldKey) { heldKeyFlag = true; }
+}
+
+//*****************************************************************************
+//
+// KEYPAD IDLE TIMER INTERRUPT HANDLER
+//
+//*****************************************************************************
+void
+Timer1KeysIdleIntHandler(void)
+{
+    // Clear the timer interrupt.
+	ROM_TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
+	
+	// Disable the timer
+	ROM_TimerDisable(TIMER1_BASE, TIMER_A);
+
+	// The timer is up! Set a flag to lock the keypad
+	if (keysUnlocked){ keysIdleFlag = true; }
 }
 
 //*****************************************************************************
@@ -605,6 +572,10 @@ ADCrun (int ADCchan)
 //*****************************************************************************
 //
 // STATE MACHINE FOR BATTERY
+// Should improve this so it also considers how the voltage is changing over
+// time. Perhaps a secondary state machine that determines if voltage is
+// increasing or decreasing within each state. Also consider changing from
+// priority structure to total load structure?
 //
 //*****************************************************************************
 void
@@ -993,14 +964,14 @@ void
 GSMtoggleTalk(void)
 {
 	// Switch modes depending on current state
-	if (talkMode == false)
+	if (debugMode == false)
 	{
 		// Get LED status and store. Turn on blue LED.
 		LEDhold = GPIOPinRead(GPIO_PORTF_BASE, LED_MAP);
 		GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, 0);
 		GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);
 		UART0printf("\n\r> [* HELD] Entering talk to GSM mode.\n\r");
-		talkMode = true;
+		debugMode = true;
 	}
 	else
 	{
@@ -1011,7 +982,7 @@ GSMtoggleTalk(void)
 		
 		// Restore LED status
 		GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, LEDhold);
-		talkMode = false;
+		debugMode = false;
 	}
 }
 
@@ -1077,6 +1048,7 @@ GSMgetResponse(void)
 		
 		// If this line says OK we've got the whole message
 		if ( strncmp(responseLine[readLine],"OK",2) == 0 ){readResponse = false;}
+		else { readLine++; }
 	}
 	
 	return readLine;
@@ -1418,6 +1390,7 @@ GSMcheckSignal(void)
 //*****************************************************************************
 //
 // GSM - CHECK BALANCE
+// For US carriers
 //
 //*****************************************************************************
 void 
@@ -1471,7 +1444,6 @@ GSMcheckBalance(void)
 //*****************************************************************************
 //
 // GSM - CHECK BALANCE/NUMBER in INDIA
-// This doesn't work.
 //
 //*****************************************************************************
 void 
@@ -2404,7 +2376,7 @@ main(void)
 	}
 	
 	// Disable talk mode (was letting GSM notifs in during setup)
-	talkMode = false;
+	debugMode = false;
 	
 	// Lock keypad
 	MPR121toggleLock();
@@ -2428,7 +2400,7 @@ main(void)
 	else {UART0printf("\n\r> DISABLED: Message controller at boot");}
 	
 	// Notify the user about long presses
-	UART0printf("\n\r> Hold *: Enter \"talk to GSM\" mode and update signal strength. (Blue LED)");
+	UART0printf("\n\r> Hold *: Enter debug mode and update signal strength. (Blue LED)");
 	UART0printf("\n\r> Hold 0: Toggle power to GSM module. (Red LED blinks)");
 	UART0printf("\n\r> Hold #: Toggle keypad lock. (Red/green LED)");
 	
@@ -2464,14 +2436,16 @@ main(void)
 			last_state = state;
 			
 			// Get the new state
-			BatteryStateMachine(DCV);
+			if (debugMode) { state = S0_start; }
+			else { BatteryStateMachine(DCV); }
 		}
 		
 		// See if the state has changed, update relays appropriately
 		if (state != last_state) 
 		{ 
 			// Set the new mask
-			relayMask = relayPriorities[(int)state-1];
+			if (debugMode) { relayMask = 0x0F; }
+			else { relayMask = relayPriorities[(int)state-1]; }
 			
 			// Set the relays
 			relaySet(relayMask & relayStatus); 
