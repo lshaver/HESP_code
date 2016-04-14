@@ -19,11 +19,9 @@
 // Lee added these
 #include <ctype.h>
 #include <inttypes.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include "buttons.h"
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 #include "uart0stdio.h"		// Console
 #include "uart1stdio.h"		// GSM
 #include "driverlib/adc.h"
@@ -31,7 +29,6 @@
 #include "driverlib/flash.h"
 #include "driverlib/i2c.h"
 #include "driverlib/ssi.h"
-#include "driverlib/systick.h"
 #include "driverlib/timer.h"
 #include "inc/hw_gpio.h"
 #include "inc/hw_i2c.h"
@@ -47,11 +44,6 @@
 #define BL_LED	GPIO_PIN_2
 #define GN_LED	GPIO_PIN_3
 #define LED_MAP	RD_LED | BL_LED | GN_LED
-
-// For driving buttons
-#define APP_SYSTICKS_PER_SEC		32
-#define APP_BUTTON_POLL_DIVIDER		8
-#define APP_HIB_BUTTON_DEBOUNCE		(APP_SYSTICKS_PER_SEC * 3)
 
 // EEPROM addresses
 #define E2A_START			0x0000
@@ -76,6 +68,8 @@
 #define KP			0
 #define TOU_THRESH 	0x0F	// touch threshold
 #define REL_THRESH 	0x09	// release threshold
+#define HOLD_TIME	2		// time required to hold a key for it register as held
+#define IDLE_TIME	20		// time system waits to time out and lock keypad
 
 // For LCD screen
 #define XPIXEL		102
@@ -87,49 +81,39 @@
 #define NORMAL		1
 #define INVERSE		2
 
+// ADC input channel definitions
+#define ADC_V		0		// Pin E1
+#define ADC_A		1		// Pin B4
+#define ADC_W		2		// Pin D2
+
+// STATE MACHINE THRESHOLDS
+#define ADC_V_TIME	1/1		// Battery voltage measurement period
+#define DCV_max		1632.6	// 330*(V at batt / V from ADC)
+#define TU1			1210	// S1 upper limit
+#define TL2			1200	// S2 lower limit
+#define TU2			1310	// S2 upper limit
+#define TL3			1300	// S3 lower limit
+#define TU3			1350	// S3 upper limit
+#define TL4			1340	// S4 lower limit
+
 //!*****************************************************************************
-//! FUNCTION DEFINITIONS
+//! FUNCTION DECLARATIONS
 //!*****************************************************************************
 
-// Interrupt handlers
-void UARTIntHandler0(void);
-void UARTIntHandler1(void);
-void MPR121IntHandler(void);
-void KeyIdleTimer1IntHandler(void);
-void KeyPressTimer0IntHandler(void);
-void SysTickIntHandler(void);
-
-// Functions
-void blinkLED (int blinkCount, int blinkSpeed, uint8_t LEDcolor);
 /// -- Relay handling
-void relayOn(int relayNum);
-void relayOff(int relayNum);
-void relayLatch(int relayNum);
-void relayToggle(int relayNum);
 void relaySet(uint32_t relayCmd);
-void relayStatusE2(void);
+
 /// -- GSM module
-bool GSMcheckPower (int checkCount);
 void GSMtogglePower(void);
 int GSMgetResponse(void);
-void GSMcheckTime(void);
-void GSMprocessMessage(int activeMsg );
 bool GSMparseMessage(int lineCount );
-bool GSMsendSMS(char *destNbr, char *msgBody);
 int GSMcheckSignal(void);
-void GSMcheckBalance(void);
+
 /// -- Keypad
-void initI2C(void);
 uint32_t I2Creceive(uint32_t slave_addr, uint8_t reg);
-void I2Csend(uint8_t slave_addr, uint8_t num_of_args, ...);
-void initMPR121(void);
-void MPR121toggleLock(void);
+
 /// -- LCD display
-void initSSI3(void);
-void SSI3sendByte(uint32_t theData);
-void initLCD(void);
 void LCDsend(uint32_t theData, uint8_t cmdByte);
-void LCDsetAddress(uint32_t page, uint32_t column);
 void LCDclear(uint8_t xs, uint8_t ys, uint8_t xe, uint8_t ye);
 void LCDchar(uint8_t row, uint8_t col, uint16_t f, uint8_t style);
 void LCDstring(uint8_t row, uint8_t col, char *word, uint8_t style);
@@ -142,44 +126,67 @@ void LCDstring(uint8_t row, uint8_t col, char *word, uint8_t style);
 //!*****************************************************************************
 
 // TESTING VARIABLES: use these to disable code segments during testing
-bool testGSM =		0;				// Turn on the GSM during boot
-bool testEEPROM =	1;				// Store/retrieve ontime from EEPROM 
+bool testGSM =		1;				// Turn on the GSM during boot
+bool testEEPROM =	0;				// Store/retrieve ontime from EEPROM 
 									// (requires testGSM)
-bool testDelete =	0;				// Delete messages during processing
+bool testDelete =	1;				// Delete messages during processing
 bool testNotify =	0;				// Text the controller when coming on-line
-bool testADC =		1;				// Analog to Digital converter
+
+// STATE MACHINE SET-UP
+typedef enum
+{
+	S0_start = 0,
+	S1_discharged,
+	S2_charging,
+	S3_charged,
+	S4_overcharged
+} battery_states;
+volatile battery_states state = S0_start;
+battery_states last_state = S0_start;
 
 // Identifying constants
-char ctrlID[] = "13158078555";		// Phone number of the controller
-char masterID[] = "00000000000";	// Phone number of the master device
-char slaveID1[] = "00000000000";	// Phone number of slave 1
-char slaveID2[] = "00000000000";	// Phone number of slave 2
-bool isMaster = true;				// Identify if this board is master or slave
+char ctrlID[] = "917337687672";		// Phone number of the controller
 uint32_t boardID1;					// IDpt1 of MCU
 uint32_t boardID2;					// IDpt2 of MCU
 char IMEI[] = "000000000000000";	// SN of SIM module (equates to board ID)
 char SIMID[] = "NO SIM CARD";		// Phone number of SIM card
-int hwRev = 2;						// Hardware rev of this board
 
 // Status holders across functions
-bool GSMoff = true;					// Flag to see if the GSM module is on/off
-bool talkMode = true;				// Allow user to interface directly with GSM
+volatile bool GSMoff = true;		// Flag to see if the GSM module is on/off
+bool debugMode = true;				// Allows direct interface with GSM, disables battery state machine
 bool SIMpresent = false;			// Flag to see if SIM is present - assume NO
-bool keysUnlocked =	false;			// For locking the keypad
-uint32_t relayStatus=0;				// Stores the status of the relays
-uint32_t E2relayStatus=0;			// For reading/writing relay status to EEPROM
-int buttonLEDhold;					// Holds status of RGB LED
-int msgCount = 0;					// Hold the int value w/count of new messages
-char pressedKey;					// Keypad: store which key was last pressed
-uint16_t touchedMap;				// Map of key status
-char balance[] = 	"000.00";		// Remaining SIM balance
+volatile bool msgFlag = false;		// Flag for new message indication from UART1 interrupt handler
+char balance[]="000.00";			// Remaining SIM balance
 int curCol=XPIXEL;					// Current column in LCD
+uint8_t LEDhold;					// Status holder for LEDs
+
+// Relay status and priority
+uint32_t relayStatus=0x00;			// Stores the status of the relays (all off at start)
+uint32_t relayMask=0x0F;			// Mask for enabling/disabling relays (all enabled at start)
+uint32_t relayPriorities[4]={
+	0x00,0x01,0x07,0x0F};			// Relay priority mask (highest, high, normal, low)
+uint32_t E2relayStatus=0;			// For reading/writing relay status to EEPROM
+
+// Keypad values and status
+static volatile bool heldKeyFlag=false;		// Flag for key held down
+static volatile bool keysUnlocked=false;	// Locked status of keypad
+static volatile bool touchFlag=false;		// Flag to see if a key was touched
+static volatile bool keysIdleFlag=false;	// Flag to see if the keys are idle and need locking
+char pressedKey;							// The key which was just pressed
+char heldKey;								// The previously pressed key
+uint16_t touchedMap;						// Map of key status
+
+// ADC values storage
+uint32_t DCV;						// DC voltage
+uint32_t DCA;						// DC amperage
+uint32_t DCW;						// DC wattage
 
 // Used by UART interrupt handlers
 unsigned char var;					// Incoming UART character
 unsigned char ptr[10000];			// Array for storing incoming UART characters
 unsigned long i;					// UART character pointer.
 unsigned long ulStatus0,ulStatus1;	// To hold the interrupt status
+char *msgCountStr;					// Number of new messages (string from UART)
 
 // Data from most recent incoming message stored here
 char responseLine[10][75];			// Use to store UART inputs
@@ -359,9 +366,8 @@ UARTIntHandler0(void)
 void
 UARTIntHandler1(void)
 {
-	char *msgCountStr;					// Number of new messages
 	static char g_cInput[128];			// String input to a UART
-	
+
 	// Get the interrupt status.
 	ulStatus1 = ROM_UARTIntStatus(UART1_BASE, true);
 	
@@ -381,7 +387,7 @@ UARTIntHandler1(void)
 		ptr[i] = var;
 		
 		// In talk mode mirror to console...
-		if (talkMode) { ROM_UARTCharPutNonBlocking(UART0_BASE, ptr[i]); }
+		if (debugMode) { ROM_UARTCharPutNonBlocking(UART0_BASE, ptr[i]); }
 		
 		// ...or else see if it's a message notification (like +CMTI: "SM",12):
 		else 
@@ -391,18 +397,11 @@ UARTIntHandler1(void)
 				// Grab everything
 				UART1gets(g_cInput,sizeof(g_cInput));
 				
-				// Stop after newline character
+				// Stop after newline character and store
 				msgCountStr = strtok(g_cInput,"\n");
 				
-				// Parse out the message count (terminate with null to store)
-				strncpy(msgCountStr,msgCountStr+7,3);
-				msgCountStr[3]='\0';
-				
-				// Convert to integer
-				sscanf(msgCountStr, "%d", &msgCount);
-				
-				// Tell the user
-				UART0printf("\n\r>>> %u NEW MESSAGE(S)",msgCount);
+				// Set a flag to notify user				
+				msgFlag = true;
 			}
 		}
 		// Proceed to next character
@@ -419,84 +418,18 @@ UARTIntHandler1(void)
 void
 MPR121IntHandler(void)
 {
-	int touchNumber = 0;				// How many keys were touched
-	int relayNum;						// For direct relay control
 	uint32_t touchedLSB, touchedMSB;	// Map of touched keys
 	
 	// Get the status of the electrodes
 	touchedLSB = I2Creceive(0x5A,0x00);
 	touchedMSB = I2Creceive(0x5A,0x01);
 	touchedMap = ((touchedMSB << 8) | touchedLSB);
+	
+	// Set a flag
+	touchFlag = true;
 
-	// Check how many electrodes were pressed
-	for ( int j=0; j<12; j++ ) { if ((touchedMap & (1<<j))) { touchNumber++; } }
-	
-	// If one electrode was pressed, register it
-	if (touchNumber == 1) {
-		if (touchedMap & (1<<K1)) { pressedKey = '1'; }
-		else if (touchedMap & (1<<K2)) { pressedKey = '2'; }
-		else if (touchedMap & (1<<K3)) { pressedKey = '3'; }
-		else if (touchedMap & (1<<K4)) { pressedKey = '4'; }
-		else if (touchedMap & (1<<K5)) { pressedKey = '5'; }
-		else if (touchedMap & (1<<K6)) { pressedKey = '6'; }
-		else if (touchedMap & (1<<K7)) { pressedKey = '7'; }
-		else if (touchedMap & (1<<K8)) { pressedKey = '8'; }
-		else if (touchedMap & (1<<K9)) { pressedKey = '9'; }
-		else if (touchedMap & (1<<K0)) { pressedKey = '0'; }
-		else if (touchedMap & (1<<KS)) { pressedKey = '*'; }
-		else if (touchedMap & (1<<KP)) 
-		{ 
-			pressedKey = '#';
-			
-			// Start timer 0A when user touches "#," to see if they're
-			// trying to lock or unlock
-			ROM_TimerLoadSet(TIMER0_BASE, TIMER_A, ROM_SysCtlClockGet()* 2);
-			ROM_TimerEnable(TIMER0_BASE, TIMER_A);
-		}
-		if (keysUnlocked) 
-		{ 
-			// If the keys are unlocked, toggle relay (if applicable):
-			relayNum = pressedKey - '0';
-			if ( relayNum > 0 && relayNum <= 4 ){ relayToggle(relayNum-1); }
-			
-			// Print the touched key to console and LCD screen:
-			UART0printf("\n\r> %c",pressedKey); 
-			curCol+=6;
-			if ( curCol>XMAX ) { curCol = 0; }
-			LCDchar(6,curCol,pressedKey, NORMAL);
-			LCDchar(6,curCol+6,' ', NORMAL);
-			
-			// And start timer 1A, the idle keypad timer:
-			ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* 15);
-			ROM_TimerEnable(TIMER1_BASE, TIMER_A);
-		}
-	}
-	// One electrode released - do nothing
-	else if (touchNumber == 0) {}
-	
-	// More than one button is pressed - do nothing
-	else {}
-	
 	// Clear the asserted interrupts
 	GPIOIntClear(GPIO_PORTC_BASE, GPIO_PIN_7);
-}
-
-//*****************************************************************************
-//
-// KEYPAD IDLE TIMER INTERRUPT HANDLER
-//
-//*****************************************************************************
-void
-KeyIdleTimer1IntHandler(void)
-{
-    // Clear the timer interrupt.
-	ROM_TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
-	
-	// Disable the timer
-	ROM_TimerDisable(TIMER1_BASE, TIMER_A);
-
-	// The timer is up! Lock the keypad
-	if (keysUnlocked){ MPR121toggleLock(); }
 }
 
 //*****************************************************************************
@@ -505,101 +438,52 @@ KeyIdleTimer1IntHandler(void)
 //
 //*****************************************************************************
 void
-KeyPressTimer0IntHandler(void)
+Timer0KeyHoldIntHandler(void)
 {
     // Clear the timer interrupt.
 	ROM_TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 	
 	// Disable the timer
 	ROM_TimerDisable(TIMER0_BASE, TIMER_A);
-
-	// The timer is up! If # is still being pressed, toggle keylock. (Note that 
-	// if the user is just rapidly pressing # this could still work - but that's
-	// not a big concern.)
-	if (touchedMap & (1<<KP)) 
-	{ 
-		// Lock if keys are unlocked
-		if (keysUnlocked){ MPR121toggleLock(); }
-		
-		// Otherwise, unlock and restart the timer
-		else { 
-			MPR121toggleLock();
-			
-			// Restart the idle timer
-			ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* 15);
-			ROM_TimerEnable(TIMER1_BASE, TIMER_A);
-		}
-	}
+	
+	// The timer is up! If the same key is still being pressed, set a flag for 
+	// the main program. (Note that if the user is just rapidly pressing a key
+	// this could still work - but that's not a big concern.)
+	if (pressedKey == heldKey) { heldKeyFlag = true; }
 }
 
 //*****************************************************************************
 //
-// BUTTON INTERRUPT HANDLER
-// This only handles debug situations for now.
+// KEYPAD IDLE TIMER INTERRUPT HANDLER
 //
 //*****************************************************************************
 void
-SysTickIntHandler(void)
+Timer1KeysIdleIntHandler(void)
 {
-	static uint32_t ui32TickCounter;
-	uint32_t ui32Buttons;
-	static volatile uint32_t ui32HibMMdeEntryCount;
+    // Clear the timer interrupt.
+	ROM_TimerIntClear(TIMER1_BASE, TIMER_TIMA_TIMEOUT);
 	
-	// Get the button state
-	ui32Buttons = ButtonsPoll(0,0);
-    ui32TickCounter++;
+	// Disable the timer
+	ROM_TimerDisable(TIMER1_BASE, TIMER_A);
 
-    switch(ui32Buttons & ALL_BUTTONS)
-    {
-		case LEFT_BUTTON:	// TOGGLE "TALK TO GSM" MODE
-			// Check if the button has been held int32_t enough to act
-			if((ui32TickCounter % APP_BUTTON_POLL_DIVIDER) == 0)
-			{
-				// Switch modes depending on current state
-				if (talkMode == false)
-				{
-					// Get LED status and store. Turn on blue LED.
-					buttonLEDhold = GPIOPinRead(GPIO_PORTF_BASE, LED_MAP);
-					GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, 0);
-					GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);
-					UART0printf("\n\r> [Left button] Entering talk to GSM mode. Press left button to end.");
-					talkMode = true;
-				}
-				else
-				{
-					UART0printf("\n\r> [Left button] Returning to main program.");
-					
-					// Restore LED status
-					GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, buttonLEDhold);
-					talkMode = false;
-					
-					// Get the GSM signal strength and print to LCD
-					GSMcheckSignal();
-				}
-			}
-			break;
+	// The timer is up! Set a flag to lock the keypad
+	if (keysUnlocked){ keysIdleFlag = true; }
+}
 
-		case RIGHT_BUTTON:	// TOGGLE POWER TO GSM MODULE
-			// Check if the button has been held int32_t enough to act
-			if((ui32TickCounter % APP_BUTTON_POLL_DIVIDER) == 0)
-			{
-				blinkLED(3,1,RD_LED);
-				UART0printf("\n\r> [Right button] Cycling power to GSM.");
-				GSMtogglePower();
-			}
-			break;
-
-		case ALL_BUTTONS:	// DO NOTHING
-			// Both buttons for longer than debounce time
-			if(ui32HibMMdeEntryCount < APP_HIB_BUTTON_DEBOUNCE)
-			{
-				UART0printf("\n\r> [Both buttons] No action defined.");
-			}
-			break;
-
-		default:
-		break;
-	}
+//*****************************************************************************
+//
+// ADC TIMER INTERRUPT HANDLER
+// Updates the ADC value based on a timer
+//
+//*****************************************************************************
+void 
+Timer2ADCIntHandler (void)
+{
+	// Clear the timer interrupt.
+	ROM_TimerIntClear(TIMER2_BASE, TIMER_TIMA_TIMEOUT);
+	
+	// Trigger the ADC conversion.
+	ADCProcessorTrigger(ADC0_BASE, ADC_V);
 }
 
 //!*****************************************************************************
@@ -609,73 +493,141 @@ SysTickIntHandler(void)
 //*****************************************************************************
 //
 // INITIATE ADC
-// PE0 (external D0)
 //
 //*****************************************************************************
 void
-ADCinit(void)
+initADC(void)
 {
-	// Rev 1: Set PE0 (External D0) as the ADC pin
-	if (hwRev == 1) { GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_0); }
-	// Rev 2:
-	else if (hwRev == 2) { 
-		GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_1);	// VOLTS (unnassigned)
-		GPIOPinTypeADC(GPIO_PORTB_BASE, GPIO_PIN_4);	// AMPS (audio in)
-		GPIOPinTypeADC(GPIO_PORTD_BASE, GPIO_PIN_2);	// WATTS (LCD Rx [unused])
-	}
-	
+	// Set ADC pins
+	GPIOPinTypeADC(GPIO_PORTE_BASE, GPIO_PIN_1);	// VOLTS (E1 - unnassigned)
+	GPIOPinTypeADC(GPIO_PORTB_BASE, GPIO_PIN_4);	// AMPS (B4 - audio in)
+	GPIOPinTypeADC(GPIO_PORTD_BASE, GPIO_PIN_2);	// WATTS (D2 - LCD Rx [unused])
+
 	// Enable sample sequence 0,1,2 for the three input signals. Each ADC module 
 	// has 4 programmable sequences, sequence 0 to sequence 3. Sequencer zero captures
 	// up to eight samples, sequencers one and two capture up to four samples, and 
 	// sequencer three captures a single sample. Priorities are arranged volts, amps, 
-	// watts.
-	ADCSequenceConfigure(ADC0_BASE, 0, ADC_TRIGGER_PROCESSOR, 0); //sequencer 0 (V)
-	ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_PROCESSOR, 1); //sequencer 1 (A)
-	ADCSequenceConfigure(ADC0_BASE, 2, ADC_TRIGGER_PROCESSOR, 2); //sequencer 2 (W)
+	// watts. Configure the interrupt flag (ADC_CTL_IE) to be set when the sample is 
+	// done.  Tell the ADC logic that this is the last conversion on the sequence 
+	// (ADC_CTL_END).
 	
-	// Configure step 0 on sequence 3.  Sample channel 3 (ADC_CTL_CH3) in
-	// single-ended mode (default) and configure the interrupt flag
-	// (ADC_CTL_IE) to be set when the sample is done.  Tell the ADC logic
-	// that this is the last conversion on sequence 3 (ADC_CTL_END).  Sequence
-	// 3 has only one programmable step.  Sequence 1 and 2 have 4 steps, and
-	// sequence 0 has 8 programmable steps.  
-	if (hwRev == 1) { 
-		ADCSequenceStepConfigure(ADC0_BASE, 3, 0, ADC_CTL_CH3 | ADC_CTL_IE | ADC_CTL_END); 
-		
-		// Enable sample sequencer
-		ADCSequenceEnable(ADC0_BASE, 3);
-		
-		// Clear interrupt flag before starting
-		ADCIntClear(ADC0_BASE, 3);
-	}
-	else if (hwRev == 2) { 
-		// Sequencer 0 (V)
-		ADCSequenceStepConfigure(ADC0_BASE, 0, 0, ADC_CTL_CH2 | ADC_CTL_IE | ADC_CTL_END);
-		
-		// Sequencer 1 (A)
-		ADCSequenceStepConfigure(ADC0_BASE, 1, 0, ADC_CTL_CH10 | ADC_CTL_IE | ADC_CTL_END);
-		
-		// Sequencer 2 (W)
-		ADCSequenceStepConfigure(ADC0_BASE, 2, 0, ADC_CTL_CH5 | ADC_CTL_IE | ADC_CTL_END);
-		
-		// Enable sample sequencers
-		ADCSequenceEnable(ADC0_BASE, 0);
-		ADCSequenceEnable(ADC0_BASE, 1);
-		ADCSequenceEnable(ADC0_BASE, 2);
-		
-		// Clear interrupt flag before starting
-		ADCIntClear(ADC0_BASE, 0);
-		ADCIntClear(ADC0_BASE, 1);
-		ADCIntClear(ADC0_BASE, 2);
-	}
+	// Sequencer 0 (V)
+	ADCSequenceConfigure(ADC0_BASE, 0, ADC_TRIGGER_PROCESSOR, 0);
+	ADCSequenceStepConfigure(ADC0_BASE, 0, 0, ADC_CTL_CH2 | ADC_CTL_IE | ADC_CTL_END);
+	
+	// Sequencer 1 (A)
+	ADCSequenceConfigure(ADC0_BASE, 1, ADC_TRIGGER_PROCESSOR, 1);
+	ADCSequenceStepConfigure(ADC0_BASE, 1, 0, ADC_CTL_CH10 | ADC_CTL_IE | ADC_CTL_END);
+	
+	// Sequencer 2 (W)
+	ADCSequenceConfigure(ADC0_BASE, 2, ADC_TRIGGER_PROCESSOR, 2);
+	ADCSequenceStepConfigure(ADC0_BASE, 2, 0, ADC_CTL_CH5 | ADC_CTL_IE | ADC_CTL_END);
+	
+	// Enable sample sequencers
+	ADCSequenceEnable(ADC0_BASE, 0);
+	ADCSequenceEnable(ADC0_BASE, 1);
+	ADCSequenceEnable(ADC0_BASE, 2);
+	
+	// Clear interrupt flag before starting
+	ADCIntClear(ADC0_BASE, 0);
+	ADCIntClear(ADC0_BASE, 1);
+	ADCIntClear(ADC0_BASE, 2);
+}
 
+//*****************************************************************************
+//
+// RUN THE ADC
+// Currently we run this only on start-up for checking initial values
+//
+//*****************************************************************************
+void
+ADCrun (int ADCchan)
+{
+	char aString[1][128];				// Generic string
+	uint32_t ADCrawValue[1];			// ADC data value
+	uint32_t ui32D0v;					// mV value on external input
+	
+	// Trigger the ADC conversion.
+	ADCProcessorTrigger(ADC0_BASE, ADCchan);
+	
+	// Wait for conversion to be completed.
+	while(!ADCIntStatus(ADC0_BASE, ADCchan, false)){}
 
+	// Clear the ADC interrupt flag.
+	ADCIntClear(ADC0_BASE, ADCchan);
+
+	// Read ADC Value.
+	ADCSequenceDataGet(ADC0_BASE, ADCchan, ADCrawValue);
+	
+	// Convert to millivolts
+	ui32D0v = ADCrawValue[0] * (3300.0/4095);
+	
+	// Convert to a string (in volts, three decimal places)
+	snprintf (aString[1],7,"%d.%03dV", ui32D0v / 1000, ui32D0v % 1000);
+
+	// Display the digital value on the console.
+	LCDstring(2+ADCchan,11*6,aString[1],NORMAL);
+}
+
+//*****************************************************************************
+//
+// STATE MACHINE FOR BATTERY
+// Should improve this so it also considers how the voltage is changing over
+// time. Perhaps a secondary state machine that determines if voltage is
+// increasing or decreasing within each state. Also consider changing from
+// priority structure to total load structure?
+//
+//*****************************************************************************
+void
+BatteryStateMachine(uint32_t battV)
+{
+	switch(state)
+	{
+		case S0_start:
+			if (battV <= TU1)
+				state = S1_discharged;
+			else if (battV>TU1 && battV<=TU2)
+				state = S2_charging;
+			else if (battV>TU2 && battV<=TU3)
+				state = S3_charged;
+			else if (battV>TU3)
+				state = S4_overcharged;
+			break;
+		
+		case S1_discharged:
+			if (battV >= TU1)
+				state = S2_charging;
+			break;
+
+		case S2_charging:
+			if(battV <= TL2)
+				state = S1_discharged;
+			else if (battV >= TU2)
+				state = S3_charged;
+			break;
+
+		case S3_charged:
+			if (battV <= TL3)
+				state = S2_charging;
+			else if (battV >= TU3)
+				state = S4_overcharged;
+			break;
+			
+		case S4_overcharged:
+			if (battV <= TL4)
+				state = S3_charged;
+			break;
+			
+		default:
+			state = S0_start;
+			break;
+	}
 }
 
 //*****************************************************************************
 //
 // BLINK LED
-// blinkSpeed in 1/10 of a second (roughly)
+// blinkLength in 1/10 of a second (roughly)
 //
 //*****************************************************************************
 void 
@@ -709,6 +661,7 @@ blinkLED (int blinkCount, int blinkLength, uint8_t LEDcolor)
 //*****************************************************************************
 //
 // TURN ON RELAY
+// This is only called by the relaySet() function to turn a single relay on.
 //
 //*****************************************************************************
 void 
@@ -717,8 +670,7 @@ relayOn(int relayNum)
 	if ( relayNum == 0 )
 	{
 		// Rel1
-		if (hwRev == 1) { GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, GPIO_PIN_1); }
-		else if (hwRev == 2) { GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_0, GPIO_PIN_0); }
+		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_0, GPIO_PIN_0);
 	}
 	else if ( relayNum == 1 )
 	{
@@ -733,14 +685,14 @@ relayOn(int relayNum)
 	else if ( relayNum == 3 )
 	{
 		// Rel4
-		if (hwRev == 1) { GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_PIN_4); }
-		else if (hwRev == 2) { GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_PIN_4); }
+		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_PIN_4);
 	}
 }
 
 //*****************************************************************************
 //
 // TURN OFF RELAY
+// This is only called by the relaySet() function to turn a single relay off.
 //
 //*****************************************************************************
 void 
@@ -764,14 +716,15 @@ relayOff(int relayNum)
 	else if ( relayNum == 3 )
 	{
 		// Rel4N
-		if (hwRev == 1) { GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_1, GPIO_PIN_1); }
-		else if (hwRev == 2) { GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_0, GPIO_PIN_0); }
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_0, GPIO_PIN_0);
 	}
 }
 
 //*****************************************************************************
 //
 // LATCH RELAY
+// This is only called by the relaySet() function to latch a single relay after
+// it has been turned on or off.
 //
 //*****************************************************************************
 void 
@@ -780,8 +733,7 @@ relayLatch(int relayNum)
     if ( relayNum == 0 )
 	{
 		// Rel1
-		if (hwRev == 1) { GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0); }
-		else if (hwRev == 2) { GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_0, 0); }
+		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_0, 0);
 		// Rel1N
 		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_4, 0);
 	}
@@ -802,56 +754,84 @@ relayLatch(int relayNum)
 	else if ( relayNum == 3 )
 	{
 		// Rel4
-		if (hwRev == 1) { GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, 0); }
-		else if (hwRev == 2) { GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, 0); }
+		GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_4, 0);
 		// Rel4N
-		if (hwRev == 1) { GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_1, 0); }
-		else if (hwRev == 2) { GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_0, 0); }
+		GPIOPinWrite(GPIO_PORTE_BASE, GPIO_PIN_0, 0);
 	}
 }
 
 //*****************************************************************************
 //
 // TOGGLE RELAY
+// This is only called by the keypad interrupt when a user manually turns a
+// relay on or off. 
 //
 //*****************************************************************************
 void 
 relayToggle(int relayNum)
 {
-	// Hold the relay status for passing to relay set function
-	uint32_t h_status = relayStatus;
+	// Grab the current relay status
+	uint32_t status = relayStatus;
 	
-	// Set/clear the appropriate relay
-	relaySet(h_status ^= 1 << relayNum);
+	// Set/clear the appropriate relay and set
+	relaySet(status ^= 1 << relayNum);
 }
 
 //*****************************************************************************
 //
+// SET RELAY PRIORITY MASK
+// This will enable to user to choose the priority of each relay. Not
+// implemented yet.
+//
+//*****************************************************************************
+void 
+relayPrioritySet(void)
+{}
+
+//*****************************************************************************
+//
 // SET RELAY STATES
+// The global method for updating all relays with a single function. Uses a 
+// simple bitmap. Checks whether each bit is different than the current state
+// before switching any relay to save power. Updates display.
 //
 //*****************************************************************************
 void 
 relaySet(uint32_t relayCmd)
 {
 	char printStatus[7];		// For updating status on LCD screen
-		
-	// Set the relays on/off as required. Update display.
+	
+	// First, AND the command with the mask - this way we will only change the
+	// relays we're allowed to.
+	relayCmd &= relayMask;
+	
+	// Cycle through each relay
 	for ( int r=0; r<4; r++ )
 	{
-		if ( relayCmd & (1 << r) ^ relayStatus & (1 << r) ) 
+		// If the commmand is ON...
+		if ( relayCmd & (1 << r) ) 
 		{ 
-			if ( relayCmd & (1 << r) ) 
-			{ 
-				relayOn(r);
-				snprintf (printStatus,7,"R%u ON ", r+1 );
-				LCDstring(r,0,printStatus,NORMAL);
-			}
-			else 
-			{ 
-				relayOff(r); 
-				snprintf (printStatus,7,"R%u OFF", r+1 );
-				LCDstring(r,0,printStatus,INVERSE);
-			}
+			// ... and the status is OFF, turn the relay ON
+			if ( ~relayStatus & (1 << r) ) { relayOn(r); }
+			
+			// In either case, update the display to show ON
+			snprintf (printStatus,7,"R%u ON ", r+1 );
+			LCDstring(r,0,printStatus,NORMAL);
+		}
+		// If the command is OFF...
+		else 
+		{ 
+			// ... and the status is ON, turn the relay OFF
+			if ( relayStatus & (1 << r) ) { relayOff(r); }
+			
+			// If the mask is enabled, update the display to show OFF
+			if ( relayMask & (1 << r) ) { snprintf (printStatus,7,"R%u OFF", r+1 ); }
+			
+			// If the mask is disabled, update the display to show -X-
+			else { snprintf (printStatus,7,"R%u -X-", r+1 ); }
+			
+			// Print appropriate status to display
+			LCDstring(r,0,printStatus,INVERSE);
 		}
 	}
 	
@@ -901,6 +881,7 @@ GSMcheckPower (int checkCount)
 {
 	for ( int ctr1=0; ctr1<checkCount; ctr1++)
 	{
+		// Notify user
 		UART0printf( "\n\r> GSM power check %u of %u...", ctr1+1,checkCount );
 		
 		// Set the flag OFF initially
@@ -947,13 +928,14 @@ GSMcheckPower (int checkCount)
 void 
 GSMtogglePower( void )
 {     
-	// Set the flag to off
-	GSMoff = true;
+	// Blink red LED and notify user
+	UART0printf("\n\r--- TOGGLING GSM POWER:");
+	blinkLED(3,1,RD_LED);
 	
 	// Set GSM reset low (must stay low to operate)
 	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_6, 0);
 	ROM_SysCtlDelay(ROM_SysCtlClockGet()/20);
-	UART0printf("\n\r--- GSM RESET ASSERTED... ");
+	UART0printf("\n\r--- GSM RESET ASSERTED...");
 	
 	// Set GSM power high for at least one second. This pulls down the actual 
 	// SIM900 power key.
@@ -966,8 +948,42 @@ GSMtogglePower( void )
 	GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_7, 0);
 	UART0printf("\n\r--- GSM POWER KEY TOGGLED ");
 	
+	// Set the flag to off (it will come right back on if the GSM is on and talking)
+	GSMoff = true;
+	
 	// Wait a bit before leaving
 	ROM_SysCtlDelay(ROM_SysCtlClockGet()/16);
+}
+
+//*****************************************************************************
+//
+// TOGGLE "TALK MODE" IN GSM
+//
+//*****************************************************************************
+void 
+GSMtoggleTalk(void)
+{
+	// Switch modes depending on current state
+	if (debugMode == false)
+	{
+		// Get LED status and store. Turn on blue LED.
+		LEDhold = GPIOPinRead(GPIO_PORTF_BASE, LED_MAP);
+		GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, 0);
+		GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);
+		UART0printf("\n\r> [* HELD] Entering talk to GSM mode.\n\r");
+		debugMode = true;
+	}
+	else
+	{
+		UART0printf("\n\r> [* HELD] Returning to main program.");
+		
+		// Get the GSM signal strength and print to LCD (if GSM is on)
+		if (!GSMoff) { GSMcheckSignal(); }
+		
+		// Restore LED status
+		GPIOPinWrite(GPIO_PORTF_BASE, LED_MAP, LEDhold);
+		debugMode = false;
+	}
 }
 
 //*****************************************************************************
@@ -1010,6 +1026,7 @@ GSMcheckTime(void)
 //*****************************************************************************
 //
 // STORE A GSM RESPONSE TO ARRAY responseLine[]
+// Need to configure a timer so this can time out.
 //
 //*****************************************************************************
 int 
@@ -1031,15 +1048,6 @@ GSMgetResponse(void)
 		
 		// If this line says OK we've got the whole message
 		if ( strncmp(responseLine[readLine],"OK",2) == 0 ){readResponse = false;}
-		
-		// If this line says "DST: " it means we just caught the network,
-		// and should signal (via returning 0) that the request should be
-		// sent again.
-		else if ( strncmp(responseLine[readLine],"DST: ",2) == 0 )
-		{ 
-			readLine = 0;
-			readResponse = false;
-		}
 		else { readLine++; }
 	}
 	
@@ -1099,6 +1107,7 @@ GSMgetIMEI(void)
 //*****************************************************************************
 //
 // GET SIM PHONE NUMBER
+// Does not work for Indian SIM
 //
 //*****************************************************************************
 void
@@ -1261,7 +1270,7 @@ GSMparseMessage( int lineCount )
 			
 			// Store the number (skip the "+")
 			msgSender += 2;
-			msgSender[11] = '\0';
+			msgSender[12] = '\0';
 			
 			// Store the date (with null terminator)
 			msgDate++;
@@ -1288,6 +1297,7 @@ GSMparseMessage( int lineCount )
 		// Proceed to next line
 		activeLine++;
 	}
+	
 	// If we didn't find an envelope, there's no message
 	if (msgEnvelope == NULL) { return false; }
 	
@@ -1380,6 +1390,7 @@ GSMcheckSignal(void)
 //*****************************************************************************
 //
 // GSM - CHECK BALANCE
+// For US carriers
 //
 //*****************************************************************************
 void 
@@ -1400,8 +1411,6 @@ GSMcheckBalance(void)
 	// The GSM module treats this as a message, not a response, so we have 
 	// to do this a bit differently than the GSMgetResponse function.
 	// +CUSD: 0,"Your account balance is 49.10 USD and will expire on 04/03/16.",64
-	// Airtel response is simply:
-	// +CUSD: 4
 	while (readResponse && ctr < 20)
 	{
 		// Grab a line
@@ -1429,6 +1438,67 @@ GSMcheckBalance(void)
 	}
 	
 	// Notify user
+	UART0printf("\n\r> GSM BALANCE: %s %s expires on %s",balance,currency,expiry);
+}
+
+//*****************************************************************************
+//
+// GSM - CHECK BALANCE/NUMBER in INDIA
+//
+//*****************************************************************************
+void 
+GSMcheckBalanceIndia(void)
+{
+	bool readResponse = true;		// Keeps the loop open while getting message
+	char *GSMresponse = NULL;		// Use to grab input
+	static char g_cInput[128];		// String input to a UART
+	char expiry[] = "00/00/0000";	// Expiry date
+	char currency[] = "Rs.";		// Balance currency
+	char *ptr;						// Pointer for parsing balance message 
+	int ctr=0;						// For stepping through tokens
+	
+	// Ask GSM module for balance
+	UART1printf("ATD*111*2#\r");
+	
+	// Retrieve balance and expiry date from GSM:
+	// The GSM module treats this as a message, not a response, so we have 
+	// to do this a bit differently than the GSMgetResponse function.
+	// +CUSD: 1,"Balance for 9513055730 is Rs. 0.00. Account Exp Date 25/09/2021 23:59.
+	while (readResponse)
+	{
+		// Grab a line
+		UART1gets(g_cInput,sizeof(g_cInput));
+		
+		// Stop after newline
+		GSMresponse = strtok(g_cInput,"\n");
+		
+		// If this line says "Exp Date" it contains the balance
+		if ( strstr(GSMresponse,"Exp Date") != '\0' ){ readResponse = false; }
+	}
+
+	// Parse for data of interest
+	ctr = 0;
+	ptr = strtok (GSMresponse," ");
+	while (ptr != NULL){
+		ptr = strtok (NULL," ");
+		if (ctr == 2) { strcpy(SIMID,ptr); }
+		else if (ctr == 4) { strcpy(currency,ptr); }
+		else if (ctr == 5) { strcpy(balance,ptr); }
+		else if (ctr == 9) { strcpy(expiry,ptr); }
+		ctr++;
+	}
+	
+	// Get rid of period at end of balance amount
+	ctr = strlen(balance);
+	if (balance[ctr-1] == '.') { balance[ctr-1]  = 0; }
+	
+	// Exit the USSD menu
+	UART1printf("AT+CUSD=2\r");
+	
+	// Wait for confirmation that we have exited the USSD menu
+	GSMgetResponse();
+	
+	// Notify user of balance
 	UART0printf("\n\r> GSM BALANCE: %s %s expires on %s",balance,currency,expiry);
 }
 
@@ -1647,6 +1717,70 @@ initMPR121(void)
 
 //*****************************************************************************
 //
+// PROCESS KEYPAD INPUT
+//
+//*****************************************************************************
+void
+MPR121keypress(void)
+{
+	int touchNumber = 0;				// How many keys were touched
+	int relayNum;						// For direct relay control
+	
+	// Check how many electrodes were pressed
+	for ( int j=0; j<12; j++ ) { if ((touchedMap & (1<<j))) { touchNumber++; } }
+	
+	// If one electrode was pressed, register it
+	if (touchNumber == 1) 
+	{
+		// See what key was pressed
+		if (touchedMap & (1<<K1)) { pressedKey = '1'; }
+		else if (touchedMap & (1<<K2)) { pressedKey = '2'; }
+		else if (touchedMap & (1<<K3)) { pressedKey = '3'; }
+		else if (touchedMap & (1<<K4)) { pressedKey = '4'; }
+		else if (touchedMap & (1<<K5)) { pressedKey = '5'; }
+		else if (touchedMap & (1<<K6)) { pressedKey = '6'; }
+		else if (touchedMap & (1<<K7)) { pressedKey = '7'; }
+		else if (touchedMap & (1<<K8)) { pressedKey = '8'; }
+		else if (touchedMap & (1<<K9)) { pressedKey = '9'; }
+		else if (touchedMap & (1<<K0)) { pressedKey = '0'; }
+		else if (touchedMap & (1<<KS)) { pressedKey = '*'; }
+		else if (touchedMap & (1<<KP)) { pressedKey = '#'; }
+		
+		// Start timer 0A when user touches a key to see if they are holding it
+		ROM_TimerLoadSet(TIMER0_BASE, TIMER_A, ROM_SysCtlClockGet()* HOLD_TIME);
+		ROM_TimerEnable(TIMER0_BASE, TIMER_A);
+		
+		// Store the key pressed to compare it when timer runs out
+		heldKey = pressedKey;
+		
+		// Act on keypress if they keys are unlocked
+		if (keysUnlocked) 
+		{ 
+			// Toggle relay (if applicable):
+			relayNum = pressedKey - '0';
+			if ( relayNum > 0 && relayNum <= 4 ){ relayToggle(relayNum-1); }
+			
+			// Print the touched key to console and LCD screen:
+			UART0printf("\n\r> %c",pressedKey); 
+			curCol+=6;								// increment column
+			if ( curCol>XMAX ) { curCol = 0; }		// wrap around if necessary
+			LCDchar(6,curCol,pressedKey, NORMAL);	// print the char with a following space
+			LCDchar(6,curCol+6,' ', NORMAL);
+			
+			// Start timer 1A, the idle keypad timer:
+			ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* IDLE_TIME);
+			ROM_TimerEnable(TIMER1_BASE, TIMER_A);
+		}
+	}
+	// One electrode released - do nothing
+	else if (touchNumber == 0) {}
+	
+	// More than one button is pressed - do nothing
+	else {}
+}
+
+//*****************************************************************************
+//
 // TOGGLE KEYPAD LOCK
 //
 //*****************************************************************************
@@ -1670,7 +1804,7 @@ MPR121toggleLock(void)
 		LCDstring(7,0,"KEYPAD LOCKED   #", INVERSE);
 		
 		// Start timer 1A, the idle keypad timer:
-		ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* 15);
+		ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* IDLE_TIME);
 		ROM_TimerEnable(TIMER1_BASE, TIMER_A);
 		
 		// Store relay status to EEPROM (only done at lock to save EEPROM)
@@ -1689,7 +1823,7 @@ MPR121toggleLock(void)
 		LCDstring(7,0,"KEYPAD UNLOCKED #", NORMAL);
 		
 		// Start timer 1A, the idle keypad timer:
-		ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* 15);
+		ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* IDLE_TIME);
 		ROM_TimerEnable(TIMER1_BASE, TIMER_A);
 	}
 }
@@ -1993,14 +2127,17 @@ LCDstring(uint8_t row, uint8_t col, char *word, uint8_t style)
 int
 main(void)
 {
+	/// ***** VARIABLES *****
 	char aString[2][128];				// Generic string
-	int anInt;							// Generic int
-	int msgOpen = 0;					// Message being processed
-	int ctr1,ctr2;						// Generic counter
-	uint32_t pui32ADC0Value[1];			// ADC0 data value
-	uint32_t ui32D0v;					// mV value on external input D0
+	int anInt=0;						// Generic int
+	int msgCount = 0;					// Number of new messages (int value)
+	int msgOpen=0;						// Message being processed
+	int ctr1;							// Generic counter
+	char *ptr;							// Generic pointer
+	uint32_t ADCrawValue[1];			// Raw value from ADC
 	
-	// Initial settings - from Anil
+	/// ***** INITIAL SETTINGS AND PERIPHERAL ENABLING *****
+	// Initial settings - from Anil. Should perhaps disable lazy stacking to prevent stack overflow?
 	ROM_FPUEnable();					// Enable floating point unit
 	ROM_FPULazyStackingEnable();		// Enable lazy stacking of FPU
 	ROM_IntMasterEnable();				// Enable processor interrupts
@@ -2021,9 +2158,10 @@ main(void)
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_SSI3);		// SSI3 for EA DOGS102W6 LCD display
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);	// Timer for keylock
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);	// Timer for keypad timeout
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER2);	// Timer for battery voltage measurement
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);	// Console UART
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);	// GSM UART
-    
+	
 	// Configure GPIO outputs
 	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_5);		// Rel3N
 	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_6);		// GSM PWRKEY
@@ -2033,27 +2171,22 @@ main(void)
 	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_3);		// Rel2
 	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_5);		// Rel2N
 	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);	// RGB LED
-	if (hwRev == 1) {
-		// ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_1);	// Rel4
-		// ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_4);	// Rel1N
-		// ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1);	// Rel1  (conflict with red LED)
-		// ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_4);	// Rel4N (conflict with USR SW1)
-	}
-	else if (hwRev == 2) {
-		ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_0);		// Rel4N
-		ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_4);		// Rel1N 
-		
-		// Disable NMI on PF0
-		HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = GPIO_LOCK_KEY;		// Unlock the port
-		HWREG(GPIO_PORTF_BASE + GPIO_O_CR) |= GPIO_PIN_0;			// Unlock the pin
-		HWREG(GPIO_PORTF_BASE + GPIO_O_AFSEL) &= ~GPIO_PIN_0;  
-		HWREG(GPIO_PORTF_BASE + GPIO_O_DEN) |= GPIO_PIN_0;
-		HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = 0;					// Lock the port
-		ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_0);		// Rel1 (conflict with USR SW2)
-		
-		ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_4);		// Rel4 (conflict with USR SW1)
-	}
 	
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_0);		// Rel4N
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTE_BASE, GPIO_PIN_4);		// Rel1N 
+
+	// Port F unlock procedure:
+	HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = GPIO_LOCK_KEY;		// Unlock the port
+	HWREG(GPIO_PORTF_BASE + GPIO_O_CR) |= GPIO_PIN_0;			// Unlock the pin
+	HWREG(GPIO_PORTF_BASE + GPIO_O_AFSEL) &= ~GPIO_PIN_0;  
+	HWREG(GPIO_PORTF_BASE + GPIO_O_DEN) |= GPIO_PIN_0;
+	HWREG(GPIO_PORTF_BASE + GPIO_O_LOCK) = 0;					// Lock the port
+
+	// Turn it all on:
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_0);		// Rel1 (conflict with USR SW2)
+	ROM_GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_4);		// Rel4 (conflict with USR SW1)
+	
+	/// ***** INITIALIZE PERIPHERALS *****
 	// Turn on an LED to show that we're working
 	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, BL_LED);
 	
@@ -2067,7 +2200,7 @@ main(void)
 	// Set up the timers used to lock/unlock the keypad
 	ROM_TimerConfigure(TIMER0_BASE, TIMER_CFG_ONE_SHOT);
 	ROM_TimerConfigure(TIMER1_BASE, TIMER_CFG_ONE_SHOT);
-	ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* 15);
+	//ROM_TimerLoadSet(TIMER1_BASE, TIMER_A, ROM_SysCtlClockGet()* IDLE_TIME);
 	
 	// Setup the interrupts for the timer timeouts
 	ROM_IntEnable(INT_TIMER0A);
@@ -2109,7 +2242,7 @@ main(void)
 	ROM_IntEnable(INT_UART1);
 	ROM_UARTIntEnable(UART1_BASE, UART_INT_RX | UART_INT_RT);  
 	
-	/// GSM TEST AREA
+	/// ***** GSM MODULE INITIALIZATION *****
 	if (testGSM)
 	{
 		// See if the GSM module is on: try three times to power up
@@ -2147,48 +2280,13 @@ main(void)
 		LCDstring(4,0,"...",NORMAL);
 		
 		// If SIM card is present, get the phone number and balance
-		if ( SIMpresent ) 
-		{ 
-			// Get number
-			GSMgetNum(); 
-			
-			// Get balance
-			GSMcheckBalance();
-		}
+		if ( SIMpresent ) { GSMcheckBalanceIndia(); }
 		
 		// Print phone number / SIM status to LCD
 		LCDstring(4,0,SIMID,NORMAL);
 	}
 	
-	/// ADC TEST AREA - start the ADC
-	if (testADC){ ADCinit(); }
-	
-	// Notify the user what testing functions are active
-	UART0printf("\n\r> ----------Testing function status:----------");
-	if (testGSM) { UART0printf("\n\r> ENABLED : GSM power at boot"); }
-	else {UART0printf("\n\r> DISABLED: GSM power at boot");}
-	if (testEEPROM) { UART0printf("\n\r> ENABLED : Store/retrieve ontime from EEPROM"); }
-	else {UART0printf("\n\r> DISABLED: Store/retrieve ontime from EEPROM");}
-	if (testDelete) { UART0printf("\n\r> ENABLED : Delete messages during processing"); }
-	else {UART0printf("\n\r> DISABLED: Delete messages during processing");}
-	if (testNotify) { UART0printf("\n\r> ENABLED : Message controller at boot"); }
-	else {UART0printf("\n\r> DISABLED: Message controller at boot");}
-	if (testADC) { UART0printf("\n\r> ENABLED : Test ADC"); }
-	else {UART0printf("\n\r> DISABLED: Test ADC");}
-	UART0printf("\n\r> --------------------------------------------");
-	
-	// Initialize the SysTick interrupt to process buttons 
-	// Need to remove button functionality and duplicate on touchpad, as buttons interfere with relays, and won't be available to users anyway once the board is inside of an enclosure.
-	//ButtonsInit();
-	SysTickPeriodSet(SysCtlClockGet() / APP_SYSTICKS_PER_SEC);
-	SysTickEnable();
-	SysTickIntEnable();
-	
-	// Notify the user about buttons
-	UART0printf("\n\r> LEFT BUTTON:  Enter \"talk to GSM\" mode (blue LED). Updates signal strength.");
-	UART0printf("\n\r> RIGHT BUTTON: Toggle power to GSM module (red LED).");
-	
-	/// EEPROM TEST AREA: Store on-time, retrieve last on-time. 
+	/// ***** EEPROM TEST AREA: Store on-time, retrieve last on-time. *****
 	// Don't run this each time 'cause EEPROM wears out.
 	if (testEEPROM) 
 	{
@@ -2208,14 +2306,36 @@ main(void)
 		UART0printf("E2> EEPROM Size %d bytes\n", e2size);
 		eblock = EEPROMBlockCountGet(); // Get EEPROM Block Count
 		UART0printf("E2> EEPROM Blok Count: %d\n", e2block);*/
-		
 	}
 	
 	// Clear the LCD and set up for normal use:
 	LCDclear(0,0,XMAX,YMAX);
-
-	// Print relay status:
-	if ( !testEEPROM ) { relaySet(0); }
+	
+	/// ***** SET UP ADC TO READ BATTERY VOLTAGE *****
+	// Initialize the ADC
+	initADC(); 
+	
+	// Pre-print labels on the LCD
+	LCDstring(2,8*6,"E1 ",NORMAL);
+	LCDstring(3,8*6,"B4 ",NORMAL);
+	LCDstring(4,8*6,"D2 ",NORMAL);
+	
+	// Run each ADC once and print values to LCD
+	for ( ctr1 = 0; ctr1 < 3; ctr1++ ) { ADCrun(ctr1); }
+	
+	// Set up a timer for the DC volts measurement
+	ROM_TimerConfigure(TIMER2_BASE, TIMER_CFG_PERIODIC);
+	ROM_TimerLoadSet(TIMER2_BASE, TIMER_A, ROM_SysCtlClockGet()* ADC_V_TIME);
+	ROM_IntEnable(INT_TIMER2A);
+	ROM_TimerIntEnable(TIMER2_BASE, TIMER_TIMA_TIMEOUT);
+	
+	/// ***** SET UP RELAYS *****
+	if ( !testEEPROM ) 
+	{ 
+		// If we're not using EEPROM, just turn all the relays off.
+		relayStatus = 0x0F;
+		relaySet(0x00);
+	}
 	else 
 	{
 		// Read the last relay status from EEPROM
@@ -2232,44 +2352,174 @@ main(void)
 		relayStatus = 15-E2relayStatus;
 		UART0printf("\n\r> 15-E2relayStatus = %u",relayStatus);
 		
-		// Apply the previous relay states
+		// Apply the previous relay states (note we assume these states are already
+		// set based on latching, this is just a double-check).
 		relaySet(E2relayStatus);
 	}
 	
+	/// ***** SET UP DISPLAY *****
 	// Get the GSM signal strength and print to LCD (along with balance)
 	if (testGSM) 
 	{ 
 		GSMcheckSignal(); 
 		
 		// Print balance to LCD
-		LCDstring(1,(18-sizeof(balance))*6,"$",NORMAL);
-		LCDstring(1,(19-sizeof(balance))*6,balance,NORMAL);
+		LCDstring(1,(19-sizeof(balance))*6,"R",NORMAL);
+		LCDstring(1,(20-sizeof(balance))*6,balance,NORMAL);
 	}
 	
-	/// CONTROLLER NOTIFY
+	/// ***** FINAL PREP: *****
+	// Notify controller via SMS
 	if (testNotify && SIMpresent){ 
 		snprintf(aString[1],83,"MCU %X-%X IMEI %s OT %s BAL %s",boardID1,boardID2,IMEI,fullOnTime,balance);
 		GSMsendSMS( ctrlID, aString[1] ); 
 	}
 	
 	// Disable talk mode (was letting GSM notifs in during setup)
-	talkMode = false;
-	
-	/// SETUP COMPLETE!
-	UART0printf("\n\r> Setup complete! \n\r>>> RUNNING MAIN PROGRAM");
-	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
+	debugMode = false;
 	
 	// Lock keypad
 	MPR121toggleLock();
-	LCDstring(7,0,"SETUP COMPLETE!  ", NORMAL);
+
+	// Set initial battery state
+	state = S0_start;
 	
-	/// MAIN LOOP - 
-	// 1. Wait for new message notification and process. 
-	// 2. Update ADC.
-	ctr2=0;
-	while(1){
-		// Process new messages.
-		while (msgCount > 0)
+	// Start the ADC timer
+	ROM_TimerEnable(TIMER2_BASE, TIMER_A);
+	
+	/// ***** SETUP COMPLETE! *****
+	// Notify the user what testing functions are active
+	UART0printf("\n\r> Testing function status:");
+	if (testGSM) { UART0printf("\n\r> ENABLED : GSM power at boot"); }
+	else {UART0printf("\n\r> DISABLED: GSM power at boot");}
+	if (testEEPROM) { UART0printf("\n\r> ENABLED : Store/retrieve ontime from EEPROM"); }
+	else {UART0printf("\n\r> DISABLED: Store/retrieve ontime from EEPROM");}
+	if (testDelete) { UART0printf("\n\r> ENABLED : Delete messages during processing"); }
+	else {UART0printf("\n\r> DISABLED: Delete messages during processing");}
+	if (testNotify) { UART0printf("\n\r> ENABLED : Message controller at boot"); }
+	else {UART0printf("\n\r> DISABLED: Message controller at boot");}
+	
+	// Notify the user about long presses
+	UART0printf("\n\r> Hold *: Enter debug mode and update signal strength. (Blue LED)");
+	UART0printf("\n\r> Hold 0: Toggle power to GSM module. (Red LED blinks)");
+	UART0printf("\n\r> Hold #: Toggle keypad lock. (Red/green LED)");
+	
+	// Tell the user we're done
+	UART0printf("\n\r>>> SETUP COMPLETE! RUNNING MAIN PROGRAM");
+	LCDstring(7,0,"SETUP COMPLETE!  ", NORMAL);
+	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
+
+	/// MAIN PROGRAM
+	// Enter a never ending SUPERLOOP:
+	// 1) When ADC timer is up get ADC value and change state as necessary
+	// 2) See if the state has changed and take appropriate actions
+	// 3) See if user has touched keypad and process
+	// 4) Wait for user to long press keypad and process
+	// 5) See if the keypad is idle and we should lock it
+	// 6) See if there are any new message notifications and get the count
+	// 7) Process any new messages
+	while (1) 
+	{
+		// Wait for the ADC to finish
+		if(ADCIntStatus(ADC0_BASE, ADC_V, false))
+		{
+			// Read ADC Value
+			ADCSequenceDataGet(ADC0_BASE, ADC_V, ADCrawValue);
+			
+			// Clear the ADC conversion flag
+			ADCIntClear(ADC0_BASE, ADC_V);
+
+			// Convert value to millivolts
+			DCV = ADCrawValue[0] * (DCV_max/4095);
+			
+			// Hold the current state
+			last_state = state;
+			
+			// Get the new state
+			if (debugMode) { state = S0_start; }
+			else { BatteryStateMachine(DCV); }
+		}
+		
+		// See if the state has changed, update relays appropriately
+		if (state != last_state) 
+		{ 
+			// Set the new mask
+			if (debugMode) { relayMask = 0x0F; }
+			else { relayMask = relayPriorities[(int)state-1]; }
+			
+			// Set the relays
+			relaySet(relayMask & relayStatus); 
+			
+			// Update battery voltage on display
+			snprintf (aString[1],11,"S%u: %d.%02dV ", (int)state, DCV / 100, DCV % 100);
+			LCDstring(5,0,aString[1],NORMAL);
+		}
+		else
+		{
+			// Update battery voltage on display
+			snprintf (aString[1],11,"S%u: %d.%02dV ", (int)state, DCV / 100, DCV % 100);
+			LCDstring(5,0,aString[1],NORMAL);
+		}
+		
+		// See if there are any keypresses
+		if (touchFlag)
+		{
+			// Process keypress
+			MPR121keypress();
+			
+			// Clear the flag
+			touchFlag = false;
+		}
+		
+		// See if a key is being held
+		if (heldKeyFlag)
+		{
+			// For *, toggle GSM talk mode
+			if (heldKey == '*') { GSMtoggleTalk(); }
+			
+			// For 0, toggle GSM power
+			else if (heldKey == '0') { GSMtogglePower(); }
+			
+			// For #, toggle keypad lock
+			else if (heldKey == '#') { MPR121toggleLock(); }
+			
+			// Clear the flag
+			heldKeyFlag = false;
+		}
+		
+		// See if it's time to lock the keypad
+		if (keysIdleFlag) 
+		{ 
+			// Toggle keypad lock
+			MPR121toggleLock(); 
+			
+			// Clear the flag
+			keysIdleFlag = false;
+		}
+		
+		// See if there's a new message notification and get the message count
+		if (msgFlag)
+		{
+			ptr = msgCountStr;
+			// While message count is not populated...
+			while (*ptr)
+			{ 
+				// See if the ptr is at a number...
+				if (isdigit(*ptr)) { msgCount = strtol(ptr, &ptr, 10); }
+				
+				// Otherwise move to the next character.
+				else { ptr++; }
+			}
+			
+			// Tell the user
+			UART0printf("\n\r>>> %u NEW MESSAGE(S)",msgCount);
+			
+			// Clear the flag
+			msgFlag = false;
+		}
+		
+		// See if there are any new messages
+		if (msgCount > 0)
 		{
 			// Start working on the oldest message
 			msgOpen = msgCount;
@@ -2287,44 +2537,15 @@ main(void)
 				relaySet(anInt);
 			}
 			
-			// After the last new message, update the balance and EEPROM
+			// After the last new message, update the EEPROM
 			if ( msgCount == 0 ) 
 			{ 
-				GSMcheckBalance();
-				relayStatusE2();
-			}
-		}
-
-		// Run the ADC
-		if ( testADC && msgCount == 0 ) {
-			// Cycle through the three ADCs (only working on hwRev 2)
-			for ( ctr1 = 0; ctr1 < 3; ctr1++ )
-			{
-				// Trigger the ADC conversion.
-				ADCProcessorTrigger(ADC0_BASE, ctr1);
-				
-				// Wait for conversion to be completed.
-				while(!ADCIntStatus(ADC0_BASE, ctr1, false)){}
-
-				// Clear the ADC interrupt flag.
-				ADCIntClear(ADC0_BASE, ctr1);
-
-				// Read ADC Value.
-				ADCSequenceDataGet(ADC0_BASE, ctr1, pui32ADC0Value);
-				
-				// Convert to millivolts
-				ui32D0v = pui32ADC0Value[0] * (3300.0/4095);
-				
-				// Convert to a string (in volts, three decimal places)
-				snprintf (aString[1],7,"%d.%03dV", ui32D0v / 1000, ui32D0v % 1000);
-
-				// Display the AIN0 (PE0) digital value on the console.
-				LCDstring(2+ctr1,11*6,aString[1],NORMAL);
-
-				// Wait a bit
-				ROM_SysCtlDelay(ROM_SysCtlClockGet()/4);
+				//GSMcheckBalanceIndia();
+				//relayStatusE2();
 			}
 		}
 	}
-	//return(0);
+	
+	// Exit the program (we shouldn't ever get here)
+	// return(0);
 }
