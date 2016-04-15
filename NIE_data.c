@@ -97,7 +97,7 @@
 #define TL4			1340	// S4 lower limit
 
 // Miscellaneous
-#define SENTPT		60		// Transmit data after 60 points have been collected
+#define TMIT_DATA_TIME	60	// Transmit data timer period
 
 //!*****************************************************************************
 //! FUNCTION DECLARATIONS
@@ -130,7 +130,7 @@ void LCDstring(uint8_t row, uint8_t col, char *word, uint8_t style);
 
 // TESTING VARIABLES: use these to disable code segments during testing
 bool testGSM =		0;				// Turn on the GSM during boot
-bool testEEPROM =	1;				// Store/retrieve ontime from EEPROM 
+bool testEEPROM =	0;				// Store/retrieve ontime from EEPROM 
 									// (requires testGSM)
 bool testDelete =	0;				// Delete messages during processing
 bool testNotify =	0;				// Text the controller when coming on-line
@@ -144,7 +144,7 @@ typedef enum
 	S3_charged,
 	S4_overcharged
 } battery_states;
-volatile battery_states state = S0_start;
+volatile battery_states batt_state = S0_start;
 battery_states last_state = S0_start;
 
 // Identifying constants
@@ -185,7 +185,7 @@ uint32_t DCA;						// DC amperage
 uint32_t DCW;						// DC wattage
 
 // For data log/transmit routine
-static volatile bool dataLogFlag=false;		// Timer to log data is up
+static volatile bool dataTmitFlag=false;		// Timer to log data is up
 static volatile uint8_t dataLogCtr = 0;		// Counter for how much data is stored before transmit
 
 // Used by UART interrupt handlers
@@ -206,7 +206,7 @@ char *msgTime =		NULL;			// Message time
 // GSMcheckTime function writes to these variables for main program access
 int hh,mm,ss,DD,MM,YY,zz;			// Hour, minute, second, day, month, year, 
 									// time zone (offset from GMT in 1/4 hours)
-char fullOnTime[23] = "\0";			// Complete ontime
+char fullTimestamp[23] = "\0";		// Complete timestamp
 char lastOnTime[23] = "\0";			// Previous ontime (from EEPROM)
 
 // For EEPROM
@@ -503,16 +503,13 @@ Timer2ADCIntHandler (void)
 //
 //*****************************************************************************
 void 
-Timer3ADataLogIntHandler (void)
+Timer3ATmitDataIntHandler (void)
 {
 	// Clear the timer interrupt.
 	ROM_TimerIntClear(TIMER3_BASE, TIMER_TIMA_TIMEOUT);
 	
-	// Increment logged data count
-	dataLogCtr++;
-	
 	// Set a flag
-	dataLogFlag = true;
+	dataTmitFlag = true;
 }
 
 //!*****************************************************************************
@@ -570,19 +567,12 @@ initADC(void)
 // do this without the while loop, so we don't run into stack overflow problems.
 //
 //*****************************************************************************
-void
+uint32_t
 ADCrun (int ADCchan)
 {
-	char aString[1][128];				// Generic string
 	uint32_t ADCrawValue[1];			// ADC data value
 	uint32_t ui32D0v;					// mV value on external input
 	
-	// Trigger the ADC conversion.
-	ADCProcessorTrigger(ADC0_BASE, ADCchan);
-	
-	// Wait for conversion to be completed.
-	while(!ADCIntStatus(ADC0_BASE, ADCchan, false)){}
-
 	// Clear the ADC interrupt flag.
 	ADCIntClear(ADC0_BASE, ADCchan);
 
@@ -592,11 +582,7 @@ ADCrun (int ADCchan)
 	// Convert to millivolts
 	ui32D0v = ADCrawValue[0] * (3300.0/4095);
 	
-	// Convert to a string (in volts, three decimal places)
-	snprintf (aString[1],7,"%d.%03dV", ui32D0v / 1000, ui32D0v % 1000);
-
-	// Display the digital value on the console.
-	LCDstring(2+ADCchan,11*6,aString[1],NORMAL);
+	return ui32D0v;
 }
 
 //*****************************************************************************
@@ -611,45 +597,45 @@ ADCrun (int ADCchan)
 void
 BatteryStateMachine(uint32_t battV)
 {
-	switch(state)
+	switch(batt_state)
 	{
 		case S0_start:
 			if (battV <= TU1)
-				state = S1_discharged;
+				batt_state = S1_discharged;
 			else if (battV>TU1 && battV<=TU2)
-				state = S2_charging;
+				batt_state = S2_charging;
 			else if (battV>TU2 && battV<=TU3)
-				state = S3_charged;
+				batt_state = S3_charged;
 			else if (battV>TU3)
-				state = S4_overcharged;
+				batt_state = S4_overcharged;
 			break;
 		
 		case S1_discharged:
 			if (battV >= TU1)
-				state = S2_charging;
+				batt_state = S2_charging;
 			break;
 
 		case S2_charging:
 			if(battV <= TL2)
-				state = S1_discharged;
+				batt_state = S1_discharged;
 			else if (battV >= TU2)
-				state = S3_charged;
+				batt_state = S3_charged;
 			break;
 
 		case S3_charged:
 			if (battV <= TL3)
-				state = S2_charging;
+				batt_state = S2_charging;
 			else if (battV >= TU3)
-				state = S4_overcharged;
+				batt_state = S4_overcharged;
 			break;
 			
 		case S4_overcharged:
 			if (battV <= TL4)
-				state = S3_charged;
+				batt_state = S3_charged;
 			break;
 			
 		default:
-			state = S0_start;
+			batt_state = S0_start;
 			break;
 	}
 }
@@ -1043,14 +1029,14 @@ GSMcheckTime(void)
 	while ( j < k-1 ){
 		// Find the time in the lines we get back
 		if ( strstr(responseLine[j],"+CCLK: \"") != '\0' ){
-			strncpy(fullOnTime,responseLine[j]+8,20);
+			strncpy(fullTimestamp,responseLine[j]+8,20);
 			
 			// Split to individual integers
-			if (strstr(fullOnTime,"+")){			// Case for positive offset from GMT
-				sscanf(fullOnTime,"%d/%d/%d,%d:%d:%d+%d", &YY, &MM, &DD, &hh, &mm, &ss, &zz);
+			if (strstr(fullTimestamp,"+")){			// Case for positive offset from GMT
+				sscanf(fullTimestamp,"%d/%d/%d,%d:%d:%d+%d", &YY, &MM, &DD, &hh, &mm, &ss, &zz);
 			}
 			else{									// Case for negative offset from GMT
-				sscanf(fullOnTime,"%d/%d/%d,%d:%d:%d-%d", &YY, &MM, &DD, &hh, &mm, &ss, &zz);
+				sscanf(fullTimestamp,"%d/%d/%d,%d:%d:%d-%d", &YY, &MM, &DD, &hh, &mm, &ss, &zz);
 				zz = zz*-1;
 			}
 			YY = YY + 2000;
@@ -1848,6 +1834,9 @@ MPR121toggleLock(void)
 		
 		// Store relay status to EEPROM (only done at lock to save EEPROM)
 		if (testEEPROM) { relayStatusE2(); }
+		
+		// Set a flag to transmit data (assuming relay status has changed)
+		dataTmitFlag = true;
 	}
 	else 
 	{
@@ -2170,13 +2159,16 @@ int
 main(void)
 {
 	/// ***** VARIABLES *****
-	char aString[2][128];				// Generic string
-	int anInt=0;						// Generic int
+	uint32_t tmitData[5];				// Array of data to send to server
 	int msgCount = 0;					// Number of new messages (int value)
 	int msgOpen=0;						// Message being processed
+	uint32_t last_relayStatus=0;		// Holder for the previous relay status
+
 	int ctr1;							// Generic counter
 	char *ptr;							// Generic pointer
-	uint32_t ADCrawValue[1];			// Raw value from ADC
+	char aString[2][128];				// Generic string
+	int anInt=0;						// Generic int
+
 	
 	/// ***** INITIAL SETTINGS AND PERIPHERAL ENABLING *****
 	// Initial settings - from Anil. Should perhaps disable lazy stacking to prevent stack overflow?
@@ -2201,7 +2193,7 @@ main(void)
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);	// Timer for keylock
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);	// Timer for keypad timeout
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER2);	// Timer for battery voltage measurement
-	ROM_SysCtlPerppheralEnable(SYSCTL_PERIPH_TIMER3);	// Timer for EEPROM logging and data transmitting
+	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER3);	// Timer for EEPROM logging and data transmitting
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);	// Console UART
 	ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);	// GSM UART
 	
@@ -2318,8 +2310,8 @@ main(void)
 		}
 		
 		// Print the on-time
-		UART0printf("\n\r> On-time from GSM: %s",fullOnTime);
-		LCDstring(3,0,fullOnTime,NORMAL);
+		UART0printf("\n\r> On-time from GSM: %s",fullTimestamp);
+		LCDstring(3,0,fullTimestamp,NORMAL);
 		LCDstring(4,0,"...",NORMAL);
 		
 		// If SIM card is present, get the phone number and balance
@@ -2363,13 +2355,32 @@ main(void)
 	LCDstring(3,8*6,"B4 ",NORMAL);
 	LCDstring(4,8*6,"D2 ",NORMAL);
 	
-	// Run each ADC once and print values to LCD
-	for ( ctr1 = 0; ctr1 < 3; ctr1++ ) { ADCrun(ctr1); }
+	// Trigger each ADC
+	for ( ctr1 = 0; ctr1 < 3; ctr1++ ){ ADCProcessorTrigger(ADC0_BASE, ctr1); }
+	// Check the value from each ADC
+	for ( ctr1 = 0; ctr1 < 3; ctr1++ ){ 
+		// Wait for conversion to be completed.
+		while(!ADCIntStatus(ADC0_BASE, ctr1, false)){}
+		
+		// Record the value
+		anInt = ADCrun(ctr1); 
+		
+		// Convert to a string (in volts, three decimal places)
+		snprintf (aString[1],7,"%d.%03dV", anInt / 1000, anInt % 1000);
+
+		// Display the digital value on the console.
+		LCDstring(2+ctr1,11*6,aString[1],NORMAL);
+	}
 	
 	// Set up a timer for the DC volts measurement
 	ROM_TimerConfigure(TIMER2_BASE, TIMER_CFG_ONE_SHOT);
 	ROM_IntEnable(INT_TIMER2A);
 	ROM_TimerIntEnable(TIMER2_BASE, TIMER_TIMA_TIMEOUT);
+	
+	// Set up a timer for the data transmission
+	ROM_TimerConfigure(TIMER3_BASE, TIMER_CFG_PERIODIC);
+	ROM_IntEnable(INT_TIMER3A);
+	ROM_TimerIntEnable(TIMER3_BASE, TIMER_TIMA_TIMEOUT);
 	
 	/// ***** SET UP RELAYS *****
 	if ( !testEEPROM ) 
@@ -2413,7 +2424,7 @@ main(void)
 	/// ***** FINAL PREP: *****
 	// Notify controller via SMS
 	if (testNotify && SIMpresent){ 
-		snprintf(aString[1],83,"MCU %X-%X IMEI %s OT %s BAL %s",boardID1,boardID2,IMEI,fullOnTime,balance);
+		snprintf(aString[1],83,"MCU %X-%X IMEI %s OT %s BAL %s",boardID1,boardID2,IMEI,fullTimestamp,balance);
 		GSMsendSMS( ctrlID, aString[1] ); 
 	}
 	
@@ -2424,11 +2435,15 @@ main(void)
 	MPR121toggleLock();
 
 	// Set initial battery state
-	state = S0_start;
+	batt_state = S0_start;
 	
 	// Start the ADC timer
 	ROM_TimerLoadSet(TIMER2_BASE, TIMER_A, ROM_SysCtlClockGet()* ADC_V_TIME);
 	ROM_TimerEnable(TIMER2_BASE, TIMER_A);
+	
+	// Start the data transmit timer
+	ROM_TimerLoadSet(TIMER3_BASE, TIMER_A, ROM_SysCtlClockGet()* TMIT_DATA_TIME);
+	ROM_TimerEnable(TIMER3_BASE, TIMER_A);
 	
 	/// ***** SETUP COMPLETE! *****
 	// Notify the user what testing functions are active
@@ -2461,25 +2476,23 @@ main(void)
 	// 5) See if the keypad is idle and we should lock it
 	// 6) See if there are any new message notifications and get the count
 	// 7) Process any new messages
+	// 8) Transmit data by timer or in response to user input
 	while (1) 
 	{
 		// See if the ADC is finished
 		if(ADCIntStatus(ADC0_BASE, ADC_V, false))
 		{
-			// Read ADC Value
-			ADCSequenceDataGet(ADC0_BASE, ADC_V, ADCrawValue);
+			// Read the ADC value
+			DCV = ADCrun(ADC_V);
 			
-			// Clear the ADC conversion flag
-			ADCIntClear(ADC0_BASE, ADC_V);
-			
-			// Convert value to millivolts
-			DCV = ADCrawValue[0] * (DCV_max/4095);
+			// Convert to battery voltage
+			DCV = DCV * (DCV_max/3300);
 			
 			// Hold the current state
-			last_state = state;
+			last_state = batt_state;
 			
 			// Get the new state
-			if (debugMode) { state = S0_start; }
+			if (debugMode) { batt_state = S0_start; }
 			else { BatteryStateMachine(DCV); }
 			
 			// Restart the ADC timer
@@ -2488,23 +2501,32 @@ main(void)
 		}
 		
 		// See if the state has changed, update relays appropriately
-		if (state != last_state) 
+		if (batt_state != last_state) 
 		{ 
 			// Set the new mask
 			if (debugMode) { relayMask = 0x0F; }
-			else { relayMask = relayPriorities[(int)state-1]; }
+			else { relayMask = relayPriorities[(int)batt_state-1]; }
+			
+			// Hold the current relay status
+			last_relayStatus = relayStatus;
 			
 			// Set the relays
 			relaySet(relayMask & relayStatus); 
 			
+			// If we've turned off any relays, set the transmit flag
+			if ( relayStatus < last_relayStatus ) { dataTmitFlag = true; }
+			
 			// Update battery voltage on display
-			snprintf (aString[1],11,"S%u: %d.%02dV ", (int)state, DCV / 100, DCV % 100);
+			snprintf (aString[1],11,"S%u: %d.%02dV ", (int)batt_state, DCV / 100, DCV % 100);
 			LCDstring(5,0,aString[1],NORMAL);
+			
+			// Update the stored battery state (so we don't keep coming back here)
+			last_state = batt_state;
 		}
 		else
 		{
 			// Update battery voltage on display
-			snprintf (aString[1],11,"S%u: %d.%02dV ", (int)state, DCV / 100, DCV % 100);
+			snprintf (aString[1],11,"S%u: %d.%02dV ", (int)batt_state, DCV / 100, DCV % 100);
 			LCDstring(5,0,aString[1],NORMAL);
 		}
 		
@@ -2581,7 +2603,12 @@ main(void)
 					if ( msgContent[ctr1] == '1' ) { anInt |= 1 << ctr1; }
 					else if (msgContent[ctr1] == '0' ) { anInt &= ~(1 << ctr1); } 
 				}
-				relaySet(anInt);
+				
+				// If the command is different than status, set new state and transmit data
+				if ( anInt != relayStatus ) {
+					relaySet(anInt);
+					dataTmitFlag = true;
+				}
 			}
 			
 			// Send message content/data to server
@@ -2594,12 +2621,52 @@ main(void)
 			}
 		}
 		
-		// Store device status and send to server periodically
-		if (dataLogFlag){}
-			// Check EEPROM address to see if we just restarted
-			// If we restarted, send data to server and get new EEPROM address
-			// Hold data in memory
-			// Every few cycles, store to EEPROM and send to server
+		// Store device status and send to server under any of these conditions:
+		// 1) periodic timer
+		// 2) keypad locks (assuming user has toggled some relays)
+		// 3) state change has switched off relay(s)
+		// 4) SMS command has toggled some relays
+		if (dataTmitFlag){
+			// Clear the flag (do this early as there are THREE processes which can affect it)
+			dataTmitFlag = false;
+			
+			// Trigger the second two ADCs (amps and watts - we've already got volts)
+			for ( ctr1 = 1; ctr1 < 3; ctr1++ ){ ADCProcessorTrigger(ADC0_BASE, ctr1); }
+			
+			// While we wait on ADCs, grab time from the GSM model, store to transmit data
+			//GSMcheckTime
+			
+			// Check the ADCs and store values to transmit array
+			for ( ctr1 = 1; ctr1 < 3; ctr1++ ){ 
+				// Wait for conversion to be completed.
+				while(!ADCIntStatus(ADC0_BASE, ctr1, false)){}
+		
+				// Record the value
+				tmitData[ctr1] = ADCrun(ctr1); 
+			}
+			
+			// Hold the battery voltage data in transmit array
+			tmitData[0] = DCV;
+			
+			// Hold the battery state in transmit array
+			tmitData[3] = (int)batt_state;
+			
+			// Hold the relay state in the transmit array
+			tmitData[4] = relayStatus;
+			
+			// Push the data to the user
+			UART0printf("\n\r> DCV=%u | DCA=%u | DCW=%u | STATE=%u RELAYS=%x",tmitData[0],tmitData[1],tmitData[2],tmitData[3],tmitData[4]);
+			
+			// Print the updated values to the display (don't waste time doing this 
+			// prior to transmit)
+			for ( ctr1 = 1; ctr1 < 3; ctr1++ ){
+				// Convert to a string (in volts, three decimal places)
+				snprintf (aString[1],7,"%d.%03dV", tmitData[ctr1] / 1000, tmitData[ctr1] % 1000);
+
+				// Display the digital value on the console.
+				LCDstring(2+ctr1,11*6,aString[1],NORMAL);
+			}
+		}
 	}
 	
 	// Exit the program (we shouldn't ever get here)
