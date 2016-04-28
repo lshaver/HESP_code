@@ -108,7 +108,7 @@ void relaySet(uint32_t relayCmd);
 
 /// -- GSM module
 void GSMtogglePower(void);
-int GSMgetResponse(void);
+int GSMgetResponse(char *expResponse);
 bool GSMparseMessage(int lineCount );
 int GSMcheckSignal(void);
 
@@ -129,10 +129,10 @@ void LCDstring(uint8_t row, uint8_t col, char *word, uint8_t style);
 //!*****************************************************************************
 
 // TESTING VARIABLES: use these to disable code segments during testing
-bool testGSM =		0;				// Turn on the GSM during boot
+bool testGSM =		1;				// Turn on the GSM during boot
 bool testEEPROM =	0;				// Store/retrieve ontime from EEPROM 
 									// (requires testGSM)
-bool testDelete =	0;				// Delete messages during processing
+bool testDelete =	1;				// Delete messages during processing
 bool testNotify =	0;				// Text the controller when coming on-line
 
 // STATE MACHINE SET-UP
@@ -1024,7 +1024,7 @@ GSMcheckTime(void)
 	UART1printf("AT+CCLK?\r");
 	
 	// Store to responseLine[] array, get line count
-	k = GSMgetResponse();
+	k = GSMgetResponse("OK");
 		
 	while ( j < k-1 ){
 		// Find the time in the lines we get back
@@ -1049,10 +1049,11 @@ GSMcheckTime(void)
 //
 // STORE A GSM RESPONSE TO ARRAY responseLine[]
 // Need to configure a timer so this can time out.
+// Set it wait for a specific response. Ridiculously easy. Why didn't I do this before?
 //
 //*****************************************************************************
 int 
-GSMgetResponse(void)
+GSMgetResponse(char *expResponse)
 {
 	bool readResponse = true;		// Keeps the loop open while getting message
 	int readLine = 1;				// Counts the lines of the message
@@ -1069,7 +1070,7 @@ GSMgetResponse(void)
 		strcpy(responseLine[readLine], GSMresponse);
 		
 		// If this line says OK we've got the whole message
-		if ( strncmp(responseLine[readLine],"OK",2) == 0 ){readResponse = false;}
+		if ( strncmp(responseLine[readLine],expResponse,sizeof(expResponse)) == 0 ){readResponse = false;}
 		else { readLine++; }
 	}
 	
@@ -1088,7 +1089,7 @@ GSMgetSIMstatus(void)
 	
 	// Request SIM card status
 	UART1printf("AT+CSMINS?\r");
-	ctr1 = GSMgetResponse();
+	ctr1 = GSMgetResponse("OK");
 	
 	// Parse the response
 	for ( int ctr2 = 0; ctr2<= ctr1; ctr2++ )
@@ -1115,7 +1116,7 @@ GSMgetIMEI(void)
 	
 	// Request IMEI
 	UART1printf("AT+GSN\r");
-	ctr1 = GSMgetResponse();
+	ctr1 = GSMgetResponse("OK");
 	
 	// Parse the response
 	for ( int ctr2 = 0; ctr2<= ctr1; ctr2++ )
@@ -1139,7 +1140,7 @@ GSMgetNum (void)
 	
 	// Request phone number
 	UART1printf("AT+CNUM\r");
-	ctr1 = GSMgetResponse();
+	ctr1 = GSMgetResponse("OK");
 	
 	// Break if we got the network response
 	if ( ctr1 == 0 ) 
@@ -1196,7 +1197,7 @@ GSMprocessMessage( int msgNum )
 		// Request the message and get the lines of the response (includes 
 		// envelope, nulls, SIM responses)
 		UART1printf("AT+CMGR=%u\r\n",msgNum);
-		lineCount = GSMgetResponse();
+		lineCount = GSMgetResponse("OK");
 	
 		// Delay for a bit, needed when processing multiple messages (maybe?)
 		ROM_SysCtlDelay(ROM_SysCtlClockGet()/160);
@@ -1243,7 +1244,7 @@ GSMprocessMessage( int msgNum )
 	// Delete the message
 	if ( testDelete && msgPresent ){
 		UART1printf("AT+CMGD=%u\r\n",msgNum);
-		GSMgetResponse();
+		GSMgetResponse("OK");
 		UART0printf ( "\n\r>>> MESSAGE %u DELETED",msgNum );
 	}
 }
@@ -1384,7 +1385,7 @@ GSMcheckSignal(void)
 	UART1printf("AT+CSQ\r");
 	
 	// Store to responseLine[] array, get line count
-	lineCount = GSMgetResponse();
+	lineCount = GSMgetResponse("OK");
 		
 	while ( lineActive < lineCount-1 )
 	{
@@ -1412,7 +1413,7 @@ GSMcheckSignal(void)
 //*****************************************************************************
 //
 // GSM - CHECK BALANCE
-// For US carriers
+// For US carriers. Works for Airvoice, doesn't work for Ting.
 //
 //*****************************************************************************
 void 
@@ -1518,10 +1519,116 @@ GSMcheckBalanceIndia(void)
 	UART1printf("AT+CUSD=2\r");
 	
 	// Wait for confirmation that we have exited the USSD menu
-	GSMgetResponse();
+	GSMgetResponse("OK");
 	
 	// Notify user of balance
 	UART0printf("\n\r> GSM BALANCE: %s %s expires on %s",balance,currency,expiry);
+}
+
+//*****************************************************************************
+//
+// GSM - SEND DATA VIA GPRS
+// For now this is hard-coded to a test server, just to test functionality
+//
+//*****************************************************************************
+void 
+GSMsendGPRS(char *dataToPut)
+{
+	int linecount;
+	
+	// Set connection type to GPRS
+	UART1printf("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r");
+	
+	// Wait for OK
+	GSMgetResponse("OK");
+	
+	// Set the APN - "wholesale" for Ting
+	UART1printf("AT+SAPBR=3,1,\"APN\",\"wholesale\"\r");
+	
+	// Wait for OK
+	GSMgetResponse("OK");
+	
+	// Enable GPRS
+	UART1printf("AT+SAPBR=1,1\r");
+	
+	// Wait for OK
+	GSMgetResponse("OK");
+	
+	// Enable HTTP mode
+	UART1printf("AT+HTTPINIT\r");
+	
+	// Wait for OK
+	GSMgetResponse("OK");
+	
+	// Set HTTP profile identifier
+	UART1printf("AT+HTTPPARA=\"CID\",1\r");
+	
+	// Wait for OK
+	GSMgetResponse("OK");
+	
+	// Set URL for data post
+	UART1printf("AT+HTTPPARA=\"URL\",\"http://posttestserver.com/post.php\"\r");
+	
+	// Wait for OK
+	GSMgetResponse("OK");
+	
+	// Tell how much data we're sending
+	UART1printf("AT+HTTPDATA=%u,1000\r",strlen(dataToPut));
+	
+	// Wait for "DOWNLOAD"
+	GSMgetResponse("DOWNLOAD");
+	UART0printf("\n\r> dataSize = %u",strlen(dataToPut));
+	
+	// Send the data
+	UART1printf(dataToPut);
+	UART1printf("\r");
+	
+	// Wait for OK
+	GSMgetResponse("OK");
+	
+	// Send the POST command
+	UART1printf("AT+HTTPACTION=1\r");
+	
+	// Wait for OK
+	GSMgetResponse("OK");
+	
+	UART0printf("\n\r> data: \n\r");
+	UART0printf(dataToPut);
+	UART0printf("\r");
+	
+	// At this point we're done - but for testing, I want to grab the URL we get
+	// back and push it to the terminal for confirmation
+	
+	// Wait for confirmation
+	GSMgetResponse("+HTTPACTION:");
+	
+	/*
+	// Ask for the response
+	UART1printf("AT+HTTPREAD\r");
+	
+	// Wait for OK
+	linecount = GSMgetResponse("OK");
+	
+	// Pass everything we read back to the terminal (clunky but workable)
+	for ( int j=1; j<=linecount; j++ ) {
+		//UART0printf("\n\r>");
+		//UART0printf(responseLine[j]);
+	}
+	//UART0printf("\n\r>");
+	
+	// Close the HTTP connection
+	UART1printf("AT+HTTPTERM\r");
+	
+	// Wait for OK
+	GSMgetResponse("OK");
+	
+	// Disconnect GPRS
+	UART1printf("AT+SAPBR=0,1\r");
+	
+	// Wait for OK
+	GSMgetResponse("OK");
+	
+	// Done!*/
 }
 
 //*****************************************************************************
@@ -2315,7 +2422,8 @@ main(void)
 		LCDstring(4,0,"...",NORMAL);
 		
 		// If SIM card is present, get the phone number and balance
-		if ( SIMpresent ) { GSMcheckBalanceIndia(); }
+		//if ( SIMpresent ) { GSMcheckBalance(); }	// Doesn't work for Ting wireless
+		if ( SIMpresent ) { GSMgetNum(); }
 		
 		// Print phone number / SIM status to LCD
 		LCDstring(4,0,SIMID,NORMAL);
@@ -2416,9 +2524,9 @@ main(void)
 	{ 
 		GSMcheckSignal(); 
 		
-		// Print balance to LCD
-		LCDstring(1,(19-sizeof(balance))*6,"R",NORMAL);
-		LCDstring(1,(20-sizeof(balance))*6,balance,NORMAL);
+		// Print balance to LCD - skip this for Ting wireless
+		//LCDstring(1,(19-sizeof(balance))*6,"R",NORMAL);
+		//LCDstring(1,(20-sizeof(balance))*6,balance,NORMAL);
 	}
 	
 	/// ***** FINAL PREP: *****
@@ -2467,6 +2575,8 @@ main(void)
 	LCDstring(7,0,"SETUP COMPLETE!  ", NORMAL);
 	GPIOPinWrite(GPIO_PORTF_BASE, BL_LED, 0);
 
+	bool onetime = true;
+	
 	/// MAIN PROGRAM
 	// Enter a never ending SUPERLOOP:
 	// 1) When ADC timer is up get ADC value and change state as necessary
@@ -2655,7 +2765,13 @@ main(void)
 			tmitData[4] = relayStatus;
 			
 			// Push the data to the user
-			UART0printf("\n\r> DCV=%u | DCA=%u | DCW=%u | STATE=%u RELAYS=%x",tmitData[0],tmitData[1],tmitData[2],tmitData[3],tmitData[4]);
+			sprintf(aString[1],"V=%u&A=%u&W=%u&S=%u&R=%x",tmitData[0],tmitData[1],tmitData[2],tmitData[3],tmitData[4]);
+			UART0printf(aString[1]);
+			UART0printf("\n\r> aString[1] is %u bytes long",strlen(aString[1]));
+			
+			// Push data to server
+			if (onetime) { GSMsendGPRS(aString[1]); }
+			onetime = false;
 			
 			// Print the updated values to the display (don't waste time doing this 
 			// prior to transmit)
