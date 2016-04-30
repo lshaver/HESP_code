@@ -187,6 +187,7 @@ uint32_t DCW;						// DC wattage
 // For data log/transmit routine
 static volatile bool dataTmitFlag=false;		// Timer to log data is up
 static volatile uint8_t dataLogCtr = 0;		// Counter for how much data is stored before transmit
+char postURL[] = "AT+HTTPPARA=\"URL\",\"http://moose.net16.net/dataentry.php?";
 
 // Used by UART interrupt handlers
 unsigned char var;					// Incoming UART character
@@ -994,7 +995,7 @@ GSMtoggleTalk(void)
 	}
 	else
 	{
-		UART0printf("\n\r> [* HELD] Returning to main program.");
+		UART0printf("\n\r> [* HELD] Exiting debug mode.");
 		
 		// Get the GSM signal strength and print to LCD (if GSM is on)
 		if (!GSMoff) { GSMcheckSignal(); }
@@ -1070,7 +1071,7 @@ GSMgetResponse(char *expResponse)
 		strcpy(responseLine[readLine], GSMresponse);
 		
 		// If this line says OK we've got the whole message
-		if ( strncmp(responseLine[readLine],expResponse,sizeof(expResponse)) == 0 ){readResponse = false;}
+		if ( strstr(responseLine[readLine],expResponse) != '\0' ){readResponse = false;}
 		else { readLine++; }
 	}
 	
@@ -1534,8 +1535,6 @@ GSMcheckBalanceIndia(void)
 void 
 GSMsendGPRS(char *dataToPut)
 {
-	int linecount;
-	
 	// Set connection type to GPRS
 	UART1printf("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r");
 	
@@ -1566,22 +1565,9 @@ GSMsendGPRS(char *dataToPut)
 	// Wait for OK
 	GSMgetResponse("OK");
 	
-	// Set URL for data post
-	UART1printf("AT+HTTPPARA=\"URL\",\"http://posttestserver.com/post.php\"\r");
-	
-	// Wait for OK
-	GSMgetResponse("OK");
-	
-	// Tell how much data we're sending
-	UART1printf("AT+HTTPDATA=%u,1000\r",strlen(dataToPut));
-	
-	// Wait for "DOWNLOAD"
-	GSMgetResponse("DOWNLOAD");
-	UART0printf("\n\r> dataSize = %u",strlen(dataToPut));
-	
-	// Send the data
+	// Send the URL (with data appended)
+	UART1printf(postURL);
 	UART1printf(dataToPut);
-	UART1printf("\r");
 	
 	// Wait for OK
 	GSMgetResponse("OK");
@@ -1589,34 +1575,14 @@ GSMsendGPRS(char *dataToPut)
 	// Send the POST command
 	UART1printf("AT+HTTPACTION=1\r");
 	
-	// Wait for OK
-	GSMgetResponse("OK");
-	
-	UART0printf("\n\r> data: \n\r");
-	UART0printf(dataToPut);
-	UART0printf("\r");
-	
-	// At this point we're done - but for testing, I want to grab the URL we get
-	// back and push it to the terminal for confirmation
-	
 	// Wait for confirmation
-	GSMgetResponse("+HTTPACTION:");
+	GSMgetResponse("OK");
+	GSMgetResponse("TION:");
 	
-	/*
-	// Ask for the response
-	UART1printf("AT+HTTPREAD\r");
+	// Wait a bit for the tail end of the confirmation message
+	ROM_SysCtlDelay(ROM_SysCtlClockGet()/1);
 	
-	// Wait for OK
-	linecount = GSMgetResponse("OK");
-	
-	// Pass everything we read back to the terminal (clunky but workable)
-	for ( int j=1; j<=linecount; j++ ) {
-		//UART0printf("\n\r>");
-		//UART0printf(responseLine[j]);
-	}
-	//UART0printf("\n\r>");
-	
-	// Close the HTTP connection
+	// Close HTTP
 	UART1printf("AT+HTTPTERM\r");
 	
 	// Wait for OK
@@ -1627,8 +1593,6 @@ GSMsendGPRS(char *dataToPut)
 	
 	// Wait for OK
 	GSMgetResponse("OK");
-	
-	// Done!*/
 }
 
 //*****************************************************************************
@@ -2764,14 +2728,14 @@ main(void)
 			// Hold the relay state in the transmit array
 			tmitData[4] = relayStatus;
 			
-			// Push the data to the user
-			sprintf(aString[1],"V=%u&A=%u&W=%u&S=%u&R=%x",tmitData[0],tmitData[1],tmitData[2],tmitData[3],tmitData[4]);
-			UART0printf(aString[1]);
-			UART0printf("\n\r> aString[1] is %u bytes long",strlen(aString[1]));
+			// Combine the data for posting
+			sprintf(aString[1],"I=%s&V=%u&A=%u&W=%u&S=%u&R=%x\"\r",SIMID,tmitData[0],tmitData[1],tmitData[2],tmitData[3],tmitData[4]);
 			
-			// Push data to server
-			if (onetime) { GSMsendGPRS(aString[1]); }
-			onetime = false;
+			// Post the data to the server
+			if (onetime == true) { GSMsendGPRS(aString[1]); }
+			
+			//onetime = false;	// This only lets the data push happen once
+			UART0printf("\n\r> re-looped");
 			
 			// Print the updated values to the display (don't waste time doing this 
 			// prior to transmit)
