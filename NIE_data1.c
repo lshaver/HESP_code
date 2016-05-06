@@ -1,13 +1,4 @@
 //!*****************************************************************************
-//!*****************************************************************************
-//! STOP!
-//! THIS CODE IS NOT READY YET.
-//! Please e-mail Lee (lshaver@wisc.edu) and he will notify you when this code
-//! is ready to load on to the Tiva.
-//!*****************************************************************************
-//!*****************************************************************************
-
-//!*****************************************************************************
 //! INCLUSIONS
 //!*****************************************************************************
 
@@ -196,7 +187,8 @@ uint32_t DCW;						// DC wattage
 // For data log/transmit routine
 static volatile bool dataTmitFlag=false;		// Timer to log data is up
 static volatile uint8_t dataLogCtr = 0;		// Counter for how much data is stored before transmit
-char postURL[] = "AT+HTTPPARA=\"URL\",\"http://moose.net16.net/dataentry.php?";
+char postURL[] = "AT+HTTPPARA=\"URL\",\"http://128.105.21.248/dataentry.php?";
+//char postURL[] = "AT+HTTPPARA=\"URL\",\"http://moose.net16.net/dataentry.php?";
 
 // Used by UART interrupt handlers
 unsigned char var;					// Incoming UART character
@@ -1069,8 +1061,11 @@ GSMgetResponse(char *expResponse)
 	int readLine = 1;				// Counts the lines of the message
 	char *GSMresponse = NULL;		// Use to grab input
 	static char g_cInput[128];		// String input to a UART
+	bool frznFlag = true;			// A flag to help us tell if we get locked up
 	
-	while ( readResponse )
+	frznFlag = dataTmitFlag;
+	
+	while ( readResponse && frznFlag == dataTmitFlag )
 	{
 		// Grab a line
 		UART1gets(g_cInput,sizeof(g_cInput));
@@ -2577,7 +2572,7 @@ main(void)
 			else { BatteryStateMachine(DCV); }
 			
 			// Restart the ADC timer
-			ROM_TimerLoadSet(TIMER2_BASE, TIMER_A, ROM_SysCtlClockGet()* ADC_V_TIME);
+			//ROM_TimerLoadSet(TIMER2_BASE, TIMER_A, ROM_SysCtlClockGet()* ADC_V_TIME);
 			ROM_TimerEnable(TIMER2_BASE, TIMER_A);
 		}
 		
@@ -2711,6 +2706,9 @@ main(void)
 			// Clear the flag (do this early as there are THREE processes which can affect it)
 			dataTmitFlag = false;
 			
+			// Disable the timer
+			ROM_TimerDisable(TIMER3_BASE, TIMER_A);
+			
 			// Trigger the second two ADCs (amps and watts - we've already got volts)
 			for ( ctr1 = 1; ctr1 < 3; ctr1++ ){ ADCProcessorTrigger(ADC0_BASE, ctr1); }
 			
@@ -2753,6 +2751,9 @@ main(void)
 				// Display the digital value on the console.
 				LCDstring(2+ctr1,11*6,aString[1],NORMAL);
 			}
+			
+			// Restart the timer
+			ROM_TimerEnable(TIMER3_BASE, TIMER_A);
 		}
 	}
 	
