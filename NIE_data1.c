@@ -2390,8 +2390,9 @@ main(void)
 		LCDstring(4,0,"...",NORMAL);
 		
 		// If SIM card is present, get the phone number and balance
-		//if ( SIMpresent ) { GSMcheckBalance(); }	// Doesn't work for Ting wireless
-		if ( SIMpresent ) { GSMgetNum(); }
+		//if ( SIMpresent ) { GSMcheckBalance(); }	// Doesn't work for Ting wireless/India
+		//if ( SIMpresent ) { GSMgetNum(); }		// Doesn't work for India
+		if ( SIMpresent ) { GSMcheckBalanceIndia(); }
 		
 		// Print phone number / SIM status to LCD
 		LCDstring(4,0,SIMID,NORMAL);
@@ -2687,8 +2688,6 @@ main(void)
 				}
 			}
 			
-			// Send message content/data to server
-			
 			// After the last new message, update the EEPROM
 			if ( msgCount == 0 ) 
 			{ 
@@ -2734,7 +2733,7 @@ main(void)
 			tmitData[4] = relayStatus;
 			
 			// Combine the data for posting
-			sprintf(aString[1],"I=%s&V=%u&A=%u&W=%u&S=%u&R=%x\"\r",SIMID,tmitData[0],tmitData[1],tmitData[2],tmitData[3],tmitData[4]);
+			sprintf(aString[1],"I=%u&V=%u&A=%u&W=%u&S=%u&R=%x\"\r",boardID1,tmitData[0],tmitData[1],tmitData[2],tmitData[3],tmitData[4]);
 			
 			// Post the data to the server
 			if (debugMode == false) { 
