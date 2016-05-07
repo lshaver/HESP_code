@@ -1546,7 +1546,7 @@ GSMsendGPRS(char *dataToPut)
 	GSMgetResponse("OK");
 	
 	// Set the APN - "wholesale" for Ting
-	UART1printf("AT+SAPBR=3,1,\"APN\",\"wholesale\"\r");
+	UART1printf("AT+SAPBR=3,1,\"APN\",\"airtelgprs.com\"\r");
 	
 	// Wait for OK
 	GSMgetResponse("OK");
