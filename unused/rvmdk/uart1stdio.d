@@ -1,0 +1,15 @@
+.\rvmdk\uart1stdio.o: uart1stdio.c
+.\rvmdk\uart1stdio.o: C:\Keil\ARM\ARMCC\bin\..\include\stdbool.h
+.\rvmdk\uart1stdio.o: C:\Keil\ARM\ARMCC\bin\..\include\stdint.h
+.\rvmdk\uart1stdio.o: C:\Keil\ARM\ARMCC\bin\..\include\stdarg.h
+.\rvmdk\uart1stdio.o: ..\..\..\..\inc/hw_ints.h
+.\rvmdk\uart1stdio.o: ..\..\..\..\inc/hw_memmap.h
+.\rvmdk\uart1stdio.o: ..\..\..\..\inc/hw_types.h
+.\rvmdk\uart1stdio.o: ..\..\..\..\inc/hw_uart.h
+.\rvmdk\uart1stdio.o: ..\..\..\..\driverlib/debug.h
+.\rvmdk\uart1stdio.o: ..\..\..\..\driverlib/interrupt.h
+.\rvmdk\uart1stdio.o: ..\..\..\..\driverlib/rom.h
+.\rvmdk\uart1stdio.o: ..\..\..\..\driverlib/rom_map.h
+.\rvmdk\uart1stdio.o: ..\..\..\..\driverlib/sysctl.h
+.\rvmdk\uart1stdio.o: ..\..\..\..\driverlib/uart.h
+.\rvmdk\uart1stdio.o: UART1stdio.h

@@ -88,13 +88,13 @@
 
 // STATE MACHINE THRESHOLDS
 #define ADC_V_TIME	1		// Battery voltage measurement period
-#define DCV_max		1632.6	// 330*(V at batt / V from ADC)
+#define DCV_max		1639.4	// 330*(V at batt / V from ADC)
 #define TU1			1210	// S1 upper limit
 #define TL2			1200	// S2 lower limit
-#define TU2			1310	// S2 upper limit
-#define TL3			1300	// S3 lower limit
-#define TU3			1350	// S3 upper limit
-#define TL4			1340	// S4 lower limit
+#define TU2			1260	// S2 upper limit
+#define TL3			1250	// S3 lower limit
+#define TU3			1300	// S3 upper limit
+#define TL4			1290	// S4 lower limit
 
 // Miscellaneous
 #define TMIT_DATA_TIME	600	// Transmit data timer period
@@ -1546,7 +1546,7 @@ GSMsendGPRS(char *dataToPut)
 	GSMgetResponse("OK");
 	
 	// Set the APN - "wholesale" for Ting
-	UART1printf("AT+SAPBR=3,1,\"APN\",\"airtelgprs.com\"\r");
+	UART1printf("AT+SAPBR=3,1,\"APN\",\"wholesale\"\r");
 	
 	// Wait for OK
 	GSMgetResponse("OK");
@@ -2391,8 +2391,8 @@ main(void)
 		
 		// If SIM card is present, get the phone number and balance
 		//if ( SIMpresent ) { GSMcheckBalance(); }	// Doesn't work for Ting wireless/India
-		//if ( SIMpresent ) { GSMgetNum(); }		// Doesn't work for India
-		if ( SIMpresent ) { GSMcheckBalanceIndia(); }
+		if ( SIMpresent ) { GSMgetNum(); }		// Doesn't work for India
+		//if ( SIMpresent ) { GSMcheckBalanceIndia(); }
 		
 		// Print phone number / SIM status to LCD
 		LCDstring(4,0,SIMID,NORMAL);
@@ -2675,7 +2675,7 @@ main(void)
 			GSMprocessMessage(msgOpen);
 			
 			// If message content is good, act on message
-			if (strstr(msgSender,ctrlID) != NULL && strlen(msgContent) == 4) {
+			if (/*strstr(msgSender,ctrlID) != NULL &&*/ strlen(msgContent) == 4) {
 				for ( ctr1=0;ctr1<4;ctr1++ ){
 					if ( msgContent[ctr1] == '1' ) { anInt |= 1 << ctr1; }
 					else if (msgContent[ctr1] == '0' ) { anInt &= ~(1 << ctr1); } 
@@ -2733,7 +2733,7 @@ main(void)
 			tmitData[4] = relayStatus;
 			
 			// Combine the data for posting
-			sprintf(aString[1],"I=%u&V=%u&A=%u&W=%u&S=%u&R=%x\"\r",boardID1,tmitData[0],tmitData[1],tmitData[2],tmitData[3],tmitData[4]);
+			sprintf(aString[1],"I=%s&V=%u&A=%u&W=%u&S=%u&R=%x\"\r",SIMID,tmitData[0],tmitData[1],tmitData[2],tmitData[3],tmitData[4]);
 			
 			// Post the data to the server
 			if (debugMode == false) { 

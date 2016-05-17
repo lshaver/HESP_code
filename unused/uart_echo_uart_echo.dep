@@ -1,0 +1,49 @@
+Dependencies for Project 'uart_echo', Target 'uart_echo': (DO NOT MODIFY !)
+F (.\uart_echo.c)(0x55771F4E)(-c --cpu Cortex-M4.fp -D__EVAL -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I..\..\..\.. --c99-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-Drvmdk -DPART_TM4C123GH6PM -DTARGET_IS_TM4C123_RB1-o .\rvmdk\uart_echo.o --omf_browse .\rvmdk\uart_echo.crf --depend .\rvmdk\uart_echo.d)
+I (C:\Keil\ARM\ARMCC\include\stdint.h)(0x51C87C24)
+I (C:\Keil\ARM\ARMCC\include\stdbool.h)(0x51C87C24)
+I (..\..\..\..\inc/hw_ints.h)(0x547D1E54)
+I (..\..\..\..\inc/hw_memmap.h)(0x547D1E54)
+I (debug.h)(0x547D1E43)
+I (..\..\..\..\driverlib/fpu.h)(0x547D1E44)
+I (..\..\..\..\driverlib/gpio.h)(0x547D1E44)
+I (..\..\..\..\driverlib/interrupt.h)(0x547D1E44)
+I (..\..\..\..\driverlib/pin_map.h)(0x547D1E44)
+I (..\..\..\..\driverlib/rom.h)(0x547D1E44)
+I (..\..\..\..\driverlib/sysctl.h)(0x547D1E44)
+I (..\..\..\..\driverlib/uart.h)(0x547D1E44)
+I (..\..\..\..\utils/uartstdio.h)(0x547D1E5B)
+I (C:\Keil\ARM\ARMCC\include\stdarg.h)(0x51C87C24)
+I (C:\Keil\ARM\ARMCC\include\string.h)(0x51C87C24)
+I (C:\Keil\ARM\ARMCC\include\stdio.h)(0x51C87C24)
+I (buttons.h)(0x547D1E4E)
+F (.\startup_rvmdk.S)(0x54856D4D)(--cpu Cortex-M4.fp --pd "__EVAL SETA 1" -g --apcs=interwork --pd "__MICROLIB SETA 1"-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-o .\rvmdk\startup_rvmdk.o --depend .\rvmdk\startup_rvmdk.d)
+F (.\uartstdio.c)(0x5484EC9F)(-c --cpu Cortex-M4.fp -D__EVAL -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I..\..\..\.. --c99-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-Drvmdk -DPART_TM4C123GH6PM -DTARGET_IS_TM4C123_RB1-o .\rvmdk\uartstdio.o --omf_browse .\rvmdk\uartstdio.crf --depend .\rvmdk\uartstdio.d)
+I (C:\Keil\ARM\ARMCC\include\stdbool.h)(0x51C87C24)
+I (C:\Keil\ARM\ARMCC\include\stdint.h)(0x51C87C24)
+I (C:\Keil\ARM\ARMCC\include\stdarg.h)(0x51C87C24)
+I (..\..\..\..\inc/hw_ints.h)(0x547D1E54)
+I (..\..\..\..\inc/hw_memmap.h)(0x547D1E54)
+I (..\..\..\..\inc/hw_types.h)(0x547D1E54)
+I (..\..\..\..\inc/hw_uart.h)(0x547D1E54)
+I (..\..\..\..\driverlib/debug.h)(0x547D1E43)
+I (..\..\..\..\driverlib/interrupt.h)(0x547D1E44)
+I (..\..\..\..\driverlib/rom.h)(0x547D1E44)
+I (..\..\..\..\driverlib/rom_map.h)(0x547D1E44)
+I (..\..\..\..\driverlib/sysctl.h)(0x547D1E44)
+I (..\..\..\..\driverlib/uart.h)(0x547D1E44)
+I (..\..\..\..\utils/uartstdio.h)(0x547D1E5B)
+F (.\buttons.c)(0x54B9AC11)(-c --cpu Cortex-M4.fp -D__EVAL -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I..\..\..\.. --c99-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-Drvmdk -DPART_TM4C123GH6PM -DTARGET_IS_TM4C123_RB1-o .\rvmdk\buttons.o --omf_browse .\rvmdk\buttons.crf --depend .\rvmdk\buttons.d)
+I (C:\Keil\ARM\ARMCC\include\stdbool.h)(0x51C87C24)
+I (C:\Keil\ARM\ARMCC\include\stdint.h)(0x51C87C24)
+I (..\..\..\..\inc/hw_types.h)(0x547D1E54)
+I (..\..\..\..\inc/hw_memmap.h)(0x547D1E54)
+I (..\..\..\..\inc/hw_gpio.h)(0x547D1E54)
+I (..\..\..\..\driverlib/sysctl.h)(0x547D1E44)
+I (..\..\..\..\driverlib/rom.h)(0x547D1E44)
+I (..\..\..\..\driverlib/rom_map.h)(0x547D1E44)
+I (..\..\..\..\driverlib/pin_map.h)(0x547D1E44)
+I (..\..\..\..\driverlib/gpio.h)(0x547D1E44)
+I (buttons.h)(0x547D1E4E)
+F (..\..\..\..\driverlib\rvmdk\driverlib.lib)(0x547D1E44)()
+F (.\readme.txt)(0x547AA0F1)()

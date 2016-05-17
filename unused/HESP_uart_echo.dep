@@ -1,0 +1,79 @@
+Dependencies for Project 'HESP', Target 'uart_echo': (DO NOT MODIFY !)
+F (.\uart_echo.c)(0x565E17DF)(-c --cpu Cortex-M4.fp -D__EVAL -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I..\..\..\.. --c99-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-Drvmdk -DPART_TM4C123GH6PM -DTARGET_IS_TM4C123_RB1-o .\rvmdk\uart_echo.o --omf_browse .\rvmdk\uart_echo.crf --depend .\rvmdk\uart_echo.d)
+I (C:\Keil\ARM\ARMCC\include\stdint.h)(0x51C86E14)
+I (C:\Keil\ARM\ARMCC\include\stdbool.h)(0x51C86E14)
+I (..\..\..\..\inc/hw_ints.h)(0x547D1044)
+I (..\..\..\..\inc/hw_memmap.h)(0x547D1044)
+I (..\..\..\..\driverlib/debug.h)(0x547D1033)
+I (..\..\..\..\driverlib/fpu.h)(0x547D1034)
+I (..\..\..\..\driverlib/gpio.h)(0x55896AC3)
+I (..\..\..\..\driverlib/interrupt.h)(0x547D1034)
+I (..\..\..\..\driverlib/pin_map.h)(0x547D1034)
+I (..\..\..\..\driverlib/rom.h)(0x547D1034)
+I (..\..\..\..\driverlib/sysctl.h)(0x547D1034)
+I (..\..\..\..\driverlib/uart.h)(0x547D1034)
+I (C:\Keil\ARM\ARMCC\include\ctype.h)(0x51C86E14)
+I (C:\Keil\ARM\ARMCC\include\inttypes.h)(0x51C86E14)
+I (C:\Keil\ARM\ARMCC\include\stdio.h)(0x51C86E14)
+I (C:\Keil\ARM\ARMCC\include\stdlib.h)(0x51C86E14)
+I (buttons.h)(0x547D103E)
+I (C:\Keil\ARM\ARMCC\include\string.h)(0x51C86E14)
+I (uart0stdio.h)(0x55807165)
+I (C:\Keil\ARM\ARMCC\include\stdarg.h)(0x51C86E14)
+I (uart1stdio.h)(0x5580716D)
+I (..\..\..\..\driverlib/adc.h)(0x547D1033)
+I (..\..\..\..\driverlib/eeprom.h)(0x547D1033)
+I (..\..\..\..\driverlib/flash.h)(0x547D1034)
+I (..\..\..\..\driverlib/i2c.h)(0x547D1034)
+I (..\..\..\..\driverlib/ssi.h)(0x547D1034)
+I (..\..\..\..\driverlib/systick.h)(0x547D1034)
+I (..\..\..\..\driverlib/timer.h)(0x547D1034)
+I (..\..\..\..\inc/hw_gpio.h)(0x547D1044)
+I (..\..\..\..\inc/hw_i2c.h)(0x547D1044)
+I (..\..\..\..\inc/hw_types.h)(0x547D1044)
+I (..\..\..\..\inc/hw_ssi.h)(0x547D1044)
+F (.\startup_rvmdk.S)(0x00000000)(--cpu Cortex-M4.fp --pd "__EVAL SETA 1" -g --apcs=interwork --pd "__MICROLIB SETA 1"-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-o .\rvmdk\startup_rvmdk.o --depend .\rvmdk\startup_rvmdk.d)
+F (.\buttons.c)(0x54B99E01)(-c --cpu Cortex-M4.fp -D__EVAL -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I..\..\..\.. --c99-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-Drvmdk -DPART_TM4C123GH6PM -DTARGET_IS_TM4C123_RB1-o .\rvmdk\buttons.o --omf_browse .\rvmdk\buttons.crf --depend .\rvmdk\buttons.d)
+I (C:\Keil\ARM\ARMCC\include\stdbool.h)(0x51C86E14)
+I (C:\Keil\ARM\ARMCC\include\stdint.h)(0x51C86E14)
+I (..\..\..\..\inc/hw_types.h)(0x547D1044)
+I (..\..\..\..\inc/hw_memmap.h)(0x547D1044)
+I (..\..\..\..\inc/hw_gpio.h)(0x547D1044)
+I (..\..\..\..\driverlib/sysctl.h)(0x547D1034)
+I (..\..\..\..\driverlib/rom.h)(0x547D1034)
+I (..\..\..\..\driverlib/rom_map.h)(0x547D1034)
+I (..\..\..\..\driverlib/pin_map.h)(0x547D1034)
+I (..\..\..\..\driverlib/gpio.h)(0x55896AC3)
+I (buttons.h)(0x547D103E)
+F (.\uart0stdio.c)(0x564BA264)(-c --cpu Cortex-M4.fp -D__EVAL -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I..\..\..\.. --c99-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-Drvmdk -DPART_TM4C123GH6PM -DTARGET_IS_TM4C123_RB1-o .\rvmdk\uart0stdio.o --omf_browse .\rvmdk\uart0stdio.crf --depend .\rvmdk\uart0stdio.d)
+I (C:\Keil\ARM\ARMCC\include\stdbool.h)(0x51C86E14)
+I (C:\Keil\ARM\ARMCC\include\stdint.h)(0x51C86E14)
+I (C:\Keil\ARM\ARMCC\include\stdarg.h)(0x51C86E14)
+I (..\..\..\..\inc/hw_ints.h)(0x547D1044)
+I (..\..\..\..\inc/hw_memmap.h)(0x547D1044)
+I (..\..\..\..\inc/hw_types.h)(0x547D1044)
+I (..\..\..\..\inc/hw_uart.h)(0x547D1044)
+I (..\..\..\..\driverlib/debug.h)(0x547D1033)
+I (..\..\..\..\driverlib/interrupt.h)(0x547D1034)
+I (..\..\..\..\driverlib/rom.h)(0x547D1034)
+I (..\..\..\..\driverlib/rom_map.h)(0x547D1034)
+I (..\..\..\..\driverlib/sysctl.h)(0x547D1034)
+I (..\..\..\..\driverlib/uart.h)(0x547D1034)
+I (UART0stdio.h)(0x55807165)
+F (.\uart1stdio.c)(0x5656458E)(-c --cpu Cortex-M4.fp -D__EVAL -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I..\..\..\.. --c99-I C:\Keil\ARM\RV31\INC-I C:\Keil\ARM\CMSIS\Include-I C:\Keil\ARM\Inc\Luminary-Drvmdk -DPART_TM4C123GH6PM -DTARGET_IS_TM4C123_RB1-o .\rvmdk\uart1stdio.o --omf_browse .\rvmdk\uart1stdio.crf --depend .\rvmdk\uart1stdio.d)
+I (C:\Keil\ARM\ARMCC\include\stdbool.h)(0x51C86E14)
+I (C:\Keil\ARM\ARMCC\include\stdint.h)(0x51C86E14)
+I (C:\Keil\ARM\ARMCC\include\stdarg.h)(0x51C86E14)
+I (..\..\..\..\inc/hw_ints.h)(0x547D1044)
+I (..\..\..\..\inc/hw_memmap.h)(0x547D1044)
+I (..\..\..\..\inc/hw_types.h)(0x547D1044)
+I (..\..\..\..\inc/hw_uart.h)(0x547D1044)
+I (..\..\..\..\driverlib/debug.h)(0x547D1033)
+I (..\..\..\..\driverlib/interrupt.h)(0x547D1034)
+I (..\..\..\..\driverlib/rom.h)(0x547D1034)
+I (..\..\..\..\driverlib/rom_map.h)(0x547D1034)
+I (..\..\..\..\driverlib/sysctl.h)(0x547D1034)
+I (..\..\..\..\driverlib/uart.h)(0x547D1034)
+I (UART1stdio.h)(0x5580716D)
+F (..\..\..\..\driverlib\rvmdk\driverlib.lib)(0x547D1034)()
+F (.\readme.txt)(0x00000000)()
