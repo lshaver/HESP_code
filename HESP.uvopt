@@ -181,10 +181,10 @@
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <Focus>0</Focus>
-      <ColumnNumber>0</ColumnNumber>
+      <ColumnNumber>45</ColumnNumber>
       <tvExpOptDlg>0</tvExpOptDlg>
-      <TopLine>155</TopLine>
-      <CurrentLine>149</CurrentLine>
+      <TopLine>2763</TopLine>
+      <CurrentLine>2768</CurrentLine>
       <bDave2>0</bDave2>
       <PathWithFileName>.\uart_echo.c</PathWithFileName>
       <FilenameWithoutPath>uart_echo.c</FilenameWithoutPath>

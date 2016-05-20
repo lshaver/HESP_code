@@ -449,7 +449,7 @@ MPR121IntHandler(void)
 void
 Timer0KeyHoldIntHandler(void)
 {
-    // Clear the timer interrupt.
+    // Clear the timer interrupt
 	ROM_TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 	
 	// Disable the timer
