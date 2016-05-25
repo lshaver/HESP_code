@@ -87,14 +87,18 @@
 #define ADC_W		2		// Pin D2
 
 // STATE MACHINE THRESHOLDS
-#define ADC_V_TIME	1		// Battery voltage measurement period
-#define DCV_max		1639.4	// 330*(V at batt / V from ADC)
-#define TU1			1210	// S1 upper limit
-#define TL2			1200	// S2 lower limit
-#define TU2			1260	// S2 upper limit
-#define TL3			1250	// S3 lower limit
-#define TU3			1300	// S3 upper limit
-#define TL4			1290	// S4 lower limit
+#define ADC_V_TIME	1/5		// Battery voltage measurement period (seconds)
+#define DCV_max		1639.4	// 330*(V at batt / V at ADC)
+
+#define S1_upper		1140
+
+#define S2_lower	1150
+#define S2_upper		1310
+
+#define S3_lower	1300
+#define S3_upper		1470
+
+#define S4_lower	1360
 
 // Miscellaneous
 #define TMIT_DATA_TIME	600	// Transmit data timer period
@@ -137,20 +141,34 @@ bool testNotify =	0;				// Text the controller when coming on-line
 
 // STATE MACHINE SET-UP
 typedef enum
-{
-	S0_start = 0,
-	S1_discharged,
-	S2_charging,
-	S3_charged,
-	S4_overcharged
+{				
+	State0 = 0,
+	State1,
+	State2,
+	State3,
+	State4,
+	State5,
+	State6
 } battery_states;
-volatile battery_states batt_state = S0_start;
-battery_states last_state = S0_start;
+volatile battery_states batt_state = State0;
+battery_states last_state = State0;
+volatile bool setSource = false;
+volatile int setPriority = 0;
+
+// Relay status and priority
+uint32_t relayStatus=0x00;		// Stores the status of the relays (all off at start)
+uint32_t relayEnable=0x0F;		// Mask for enabling/disabling relays (all on at start)
+uint32_t relayPriority[4]={0x00,0x01,0x03,0x07};
+								// Relay priorities: critical, high, medium, low
+uint32_t relaySource=0x08;		// Identifies source relay
+
+
+uint32_t E2relayStatus=0;			// For reading/writing relay status to EEPROM
 
 // Identifying constants
 char ctrlID[] = "3158078555";		// Phone number of the controller
-uint32_t boardID1;					// IDpt1 of MCU
-uint32_t boardID2;					// IDpt2 of MCU
+uint32_t boardID1;					// ID part 1 of MCU
+uint32_t boardID2;					// ID part 2 of MCU
 char IMEI[] = "000000000000000";	// SN of SIM module (equates to board ID)
 char SIMID[] = "NO SIM CARD";		// Phone number of SIM card
 
@@ -162,13 +180,6 @@ volatile bool msgFlag = false;		// Flag for new message indication from UART1 in
 char balance[]="000.00";			// Remaining SIM balance
 int curCol=XPIXEL;					// Current column in LCD
 uint8_t LEDhold;					// Status holder for LEDs
-
-// Relay status and priority
-uint32_t relayStatus=0x00;			// Stores the status of the relays (all off at start)
-uint32_t relayMask=0x0F;			// Mask for enabling/disabling relays (all enabled at start)
-uint32_t relayPriorities[4]={
-	0x00,0x01,0x07,0x0F};			// Relay priority mask (highest, high, normal, low)
-uint32_t E2relayStatus=0;			// For reading/writing relay status to EEPROM
 
 // Keypad values and status
 static volatile bool heldKeyFlag=false;		// Flag for key held down
@@ -187,8 +198,7 @@ uint32_t DCW;						// DC wattage
 // For data log/transmit routine
 static volatile bool dataTmitFlag=false;		// Timer to log data is up
 static volatile uint8_t dataLogCtr = 0;		// Counter for how much data is stored before transmit
-char postURL[] = "AT+HTTPPARA=\"URL\",\"http://128.105.21.248/dataentry.php?";
-//char postURL[] = "AT+HTTPPARA=\"URL\",\"http://moose.net16.net/dataentry.php?";
+char postURL[] = "AT+HTTPPARA=\"URL\",\"http://128.105.21.248/smsPlatform/dataentry.php?";
 
 // Used by UART interrupt handlers
 unsigned char var;					// Incoming UART character
@@ -601,43 +611,61 @@ BatteryStateMachine(uint32_t battV)
 {
 	switch(batt_state)
 	{
-		case S0_start:
-			if (battV <= TU1)
-				batt_state = S1_discharged;
-			else if (battV>TU1 && battV<=TU2)
-				batt_state = S2_charging;
-			else if (battV>TU2 && battV<=TU3)
-				batt_state = S3_charged;
-			else if (battV>TU3)
-				batt_state = S4_overcharged;
+		case State0:
+			if (battV <= S1_upper){
+				batt_state = State1;
+				setSource = true;
+				setPriority = 1;}
+			else if (battV>S1_upper && battV<=S2_upper){
+				batt_state = State2;
+				setSource = true;
+				setPriority = 2;}
+			else if (battV>S2_upper){
+				batt_state = State4;
+				setSource = false;
+				setPriority = 3;}
 			break;
 		
-		case S1_discharged:
-			if (battV >= TU1)
-				batt_state = S2_charging;
+		case State1:
+			if (battV >= S1_upper){
+				batt_state = State2;
+				setSource = true;
+				setPriority = 2;}
 			break;
 
-		case S2_charging:
-			if(battV <= TL2)
-				batt_state = S1_discharged;
-			else if (battV >= TU2)
-				batt_state = S3_charged;
+		case State2:
+			if(battV <= S2_lower){
+				batt_state = State1;
+				setSource = true;
+				setPriority = 1;}
+			else if (battV >= S2_upper){
+				batt_state = State3;
+				setSource = true;
+				setPriority = 3;}
 			break;
 
-		case S3_charged:
-			if (battV <= TL3)
-				batt_state = S2_charging;
-			else if (battV >= TU3)
-				batt_state = S4_overcharged;
+		case State3:
+			if (battV <= S3_lower){
+				batt_state = State2;
+				setSource = true;
+				setPriority = 2;}
+			else if (battV >= S3_upper){
+				batt_state = State4;
+				setSource = false;
+				setPriority = 3;}
 			break;
 			
-		case S4_overcharged:
-			if (battV <= TL4)
-				batt_state = S3_charged;
+		case State4:
+			if (battV <= S4_lower){
+				batt_state = State3;
+				setSource = true;
+				setPriority = 3;}
 			break;
 			
 		default:
-			batt_state = S0_start;
+			batt_state = State0;
+			setSource = false;
+			setPriority = 0;
 			break;
 	}
 }
@@ -821,7 +849,7 @@ relaySet(uint32_t relayCmd)
 	
 	// First, AND the command with the mask - this way we will only change the
 	// relays we're allowed to.
-	relayCmd &= relayMask;
+	relayCmd &= relayEnable;
 	
 	// Cycle through each relay
 	for ( int r=0; r<4; r++ )
@@ -843,7 +871,7 @@ relaySet(uint32_t relayCmd)
 			if ( relayStatus & (1 << r) ) { relayOff(r); }
 			
 			// If the mask is enabled, update the display to show OFF
-			if ( relayMask & (1 << r) ) { snprintf (printStatus,7,"R%u OFF", r+1 ); }
+			if ( relayEnable & (1 << r) ) { snprintf (printStatus,7,"R%u OFF", r+1 ); }
 			
 			// If the mask is disabled, update the display to show -X-
 			else { snprintf (printStatus,7,"R%u -X-", r+1 ); }
@@ -2462,9 +2490,9 @@ main(void)
 	/// ***** SET UP RELAYS *****
 	if ( !testEEPROM ) 
 	{ 
-		// If we're not using EEPROM, just turn all the relays off.
-		relayStatus = 0x0F;
-		relaySet(0x00);
+		// If we're not using EEPROM, turn off loads, turn source on
+		relayStatus = 0x0F ^ relaySource;
+		relaySet(0x00 | relaySource);
 	}
 	else 
 	{
@@ -2506,13 +2534,13 @@ main(void)
 	}
 	
 	// Disable talk mode (was letting GSM notifs in during setup)
-	debugMode = false;
+	// debugMode = false;
 	
 	// Lock keypad
 	MPR121toggleLock();
 
 	// Set initial battery state
-	batt_state = S0_start;
+	batt_state = State0;
 	
 	// Start the ADC timer
 	ROM_TimerLoadSet(TIMER2_BASE, TIMER_A, ROM_SysCtlClockGet()* ADC_V_TIME);
@@ -2569,8 +2597,11 @@ main(void)
 			last_state = batt_state;
 			
 			// Get the new state
-			if (debugMode) { batt_state = S0_start; }
-			else { BatteryStateMachine(DCV); }
+			if (debugMode) { batt_state = State0; }
+			else { 
+				BatteryStateMachine(DCV);
+				UART0printf("\n\r> %u mV = state %u", DCV,(int)batt_state);
+			}
 			
 			// Restart the ADC timer
 			//ROM_TimerLoadSet(TIMER2_BASE, TIMER_A, ROM_SysCtlClockGet()* ADC_V_TIME);
@@ -2581,17 +2612,22 @@ main(void)
 		if (batt_state != last_state) 
 		{ 
 			// Set the new mask
-			if (debugMode) { relayMask = 0x0F; }
-			else { relayMask = relayPriorities[(int)batt_state-1]; }
+			if (debugMode) { relayEnable = 0x0F; }
+			else { relayEnable = relayPriority[setPriority]; }
 			
 			// Hold the current relay status
 			last_relayStatus = relayStatus;
 			
-			// Set the relays
-			relaySet(relayMask & relayStatus); 
+			// Turn on/off appropriate relays
+			//anInt = (relayEnable & relayStatus) | (relayEnable & relaySource);
+					// Loads						Sources
+			//relaySet(anInt); 
+		
+			if ( setSource ){ relayEnable = relayEnable | relaySource; }
+			relaySet(relayEnable);
 			
-			// If we've turned off any relays, set the transmit flag
-			if ( relayStatus < last_relayStatus ) { dataTmitFlag = true; }
+			// If we've changed any relays, set data transmit flag
+			if ( relayStatus != last_relayStatus ) { dataTmitFlag = true; }
 			
 			// Update battery voltage on display
 			snprintf (aString[1],11,"S%u: %d.%02dV ", (int)batt_state, DCV / 100, DCV % 100);
@@ -2736,7 +2772,7 @@ main(void)
 			sprintf(aString[1],"I=%s&V=%u&A=%u&W=%u&S=%u&R=%x\"\r",SIMID,tmitData[0],tmitData[1],tmitData[2],tmitData[3],tmitData[4]);
 			
 			// Post the data to the server
-			if (debugMode == false) { 
+			if ( debugMode == false && GSMoff == false ) { 
 				GSMsendGPRS(aString[1]); 
 				UART0printf("\n\r> TMIT: %s",aString[1]);
 			}

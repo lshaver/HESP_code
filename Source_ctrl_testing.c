@@ -87,16 +87,18 @@
 #define ADC_W		2		// Pin D2
 
 // STATE MACHINE THRESHOLDS
-#define ADC_V_TIME	1		// Battery voltage measurement period (seconds)
+#define ADC_V_TIME	1/5		// Battery voltage measurement period (seconds)
 #define DCV_max		1639.4	// 330*(V at batt / V at ADC)
-#define S1_upper	1150
-#define S2_lower	1140
-#define S2_upper	1250
-#define S3_lower	1240
-#define S3_upper	1310
-#define S4_lower	1300
-#define S4_upper	1450
-#define S5_lower	1240
+
+#define S1_upper		1140
+
+#define S2_lower	1150
+#define S2_upper		1310
+
+#define S3_lower	1300
+#define S3_upper		1470
+
+#define S4_lower	1360
 
 // Miscellaneous
 #define TMIT_DATA_TIME	600	// Transmit data timer period
@@ -139,23 +141,25 @@ bool testNotify =	0;				// Text the controller when coming on-line
 
 // STATE MACHINE SET-UP
 typedef enum
-{						// RELAY	1	2	3	4
-	S0_start = 0,		//			0	0	0	0
-	S1_discharged,		//			0	0	0	1
-	S2_chrgCritical,	//			1	0	0	1
-	S3_chrgNormal,		//			1	1	0	1
-	S4_charged,			//			1	1	1	1
-	S5_overcharged		//			1	1	1	0
-						// Priority	H	M	L	S
+{				
+	State0 = 0,
+	State1,
+	State2,
+	State3,
+	State4,
+	State5,
+	State6
 } battery_states;
-volatile battery_states batt_state = S0_start;
-battery_states last_state = S0_start;
+volatile battery_states batt_state = State0;
+battery_states last_state = State0;
+volatile bool setSource = false;
+volatile int setPriority = 0;
 
 // Relay status and priority
 uint32_t relayStatus=0x00;		// Stores the status of the relays (all off at start)
 uint32_t relayEnable=0x0F;		// Mask for enabling/disabling relays (all on at start)
-uint32_t relayStates[6]={0x00,0x08,0x09,0x0B,0x0F,0x07};
-								// Which relays should be enabled by state
+uint32_t relayPriority[4]={0x00,0x01,0x03,0x07};
+								// Relay priorities: critical, high, medium, low
 uint32_t relaySource=0x08;		// Identifies source relay
 
 
@@ -194,8 +198,7 @@ uint32_t DCW;						// DC wattage
 // For data log/transmit routine
 static volatile bool dataTmitFlag=false;		// Timer to log data is up
 static volatile uint8_t dataLogCtr = 0;		// Counter for how much data is stored before transmit
-char postURL[] = "AT+HTTPPARA=\"URL\",\"http://128.105.21.248/dataentry.php?";
-//char postURL[] = "AT+HTTPPARA=\"URL\",\"http://moose.net16.net/dataentry.php?";
+char postURL[] = "AT+HTTPPARA=\"URL\",\"http://128.105.21.248/smsPlatform/dataentry.php?";
 
 // Used by UART interrupt handlers
 unsigned char var;					// Incoming UART character
@@ -608,52 +611,59 @@ BatteryStateMachine(uint32_t battV)
 {
 	switch(batt_state)
 	{
-		case S0_start:
-			if (battV <= S1_upper)
-				batt_state = S1_discharged;
-			else if (battV>S1_upper && battV<=S2_upper)
-				batt_state = S2_chrgCritical;
-			else if (battV>S2_upper && battV<=S3_upper)
-				batt_state = S3_chrgNormal;
-			else if (battV>S3_upper && battV<=S4_upper)
-				batt_state = S4_charged;
-			else if (battV>S4_upper)
-				batt_state = S5_overcharged;
+		case State0:
+			if (battV <= S1_upper){
+				batt_state = State1;
+				setSource = true;
+				setPriority = 1;}
+			else if (battV>S1_upper && battV<=S2_upper){
+				batt_state = State2;
+				setSource = true;
+				setPriority = 2;}
+			else if (battV>S2_upper){
+				batt_state = State4;
+				setSource = false;
+				setPriority = 3;}
 			break;
 		
-		case S1_discharged:
-			if (battV >= S1_upper)
-				batt_state = S2_chrgCritical;
+		case State1:
+			if (battV >= S1_upper){
+				batt_state = State2;
+				setSource = true;
+				setPriority = 2;}
 			break;
 
-		case S2_chrgCritical:
-			if(battV <= S2_lower)
-				batt_state = S1_discharged;
-			else if (battV >= S2_upper)
-				batt_state = S3_chrgNormal;
+		case State2:
+			if(battV <= S2_lower){
+				batt_state = State1;
+				setSource = true;
+				setPriority = 1;}
+			else if (battV >= S2_upper){
+				batt_state = State3;
+				setSource = true;
+				setPriority = 3;}
 			break;
 
-		case S3_chrgNormal:
-			if (battV <= S3_lower)
-				batt_state = S2_chrgCritical;
-			else if (battV >= S3_upper)
-				batt_state = S4_charged;
+		case State3:
+			if (battV <= S3_lower){
+				batt_state = State2;
+				setSource = true;
+				setPriority = 2;}
+			else if (battV >= S3_upper){
+				batt_state = State4;
+				setSource = false;
+				setPriority = 3;}
 			break;
 			
-		case S4_charged:
-			if (battV <= S4_lower)
-				batt_state = S3_chrgNormal;
-			else if (battV >= S4_upper)
-				batt_state = S5_overcharged;
-			break;
-			
-		case S5_overcharged:
-			if (battV <= S5_lower)
-				batt_state = S4_charged;
+		case State4:
+			if (battV <= S4_lower){
+				setSource = true;
 			break;
 			
 		default:
-			batt_state = S0_start;
+			batt_state = State0;
+			setSource = false;
+			setPriority = 0;
 			break;
 	}
 }
@@ -2522,13 +2532,13 @@ main(void)
 	}
 	
 	// Disable talk mode (was letting GSM notifs in during setup)
-	debugMode = false;
+	// debugMode = false;
 	
 	// Lock keypad
 	MPR121toggleLock();
 
 	// Set initial battery state
-	batt_state = S0_start;
+	batt_state = State0;
 	
 	// Start the ADC timer
 	ROM_TimerLoadSet(TIMER2_BASE, TIMER_A, ROM_SysCtlClockGet()* ADC_V_TIME);
@@ -2585,7 +2595,7 @@ main(void)
 			last_state = batt_state;
 			
 			// Get the new state
-			if (debugMode) { batt_state = S0_start; }
+			if (debugMode) { batt_state = State0; }
 			else { 
 				BatteryStateMachine(DCV);
 				UART0printf("\n\r> %u mV = state %u", DCV,(int)batt_state);
@@ -2601,7 +2611,7 @@ main(void)
 		{ 
 			// Set the new mask
 			if (debugMode) { relayEnable = 0x0F; }
-			else { relayEnable = relayStates[(int)batt_state]; }
+			else { relayEnable = relayPriority[setPriority]; }
 			
 			// Hold the current relay status
 			last_relayStatus = relayStatus;
@@ -2610,6 +2620,8 @@ main(void)
 			//anInt = (relayEnable & relayStatus) | (relayEnable & relaySource);
 					// Loads						Sources
 			//relaySet(anInt); 
+		
+			if ( setSource ){ relayEnable = relayEnable | relaySource; }
 			relaySet(relayEnable);
 			
 			// If we've changed any relays, set data transmit flag

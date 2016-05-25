@@ -206,9 +206,9 @@ Section Cross References
     uart_echo.o(i.main) refers to uart_echo.o(i.GSMtoggleTalk) for GSMtoggleTalk
     uart_echo.o(i.main) refers to uart_echo.o(i.GSMtogglePower) for GSMtogglePower
     uart_echo.o(i.main) refers to ctype_o.o(.text) for __rt_ctype_table
+    uart_echo.o(i.main) refers to uart_echo.o(.constdata) for .constdata
     uart_echo.o(i.main) refers to uart_echo.o(i.GSMprocessMessage) for GSMprocessMessage
     uart_echo.o(i.main) refers to strlen.o(.text) for strlen
-    uart_echo.o(i.main) refers to uart_echo.o(.constdata) for .constdata
     uart_echo.o(i.main) refers to strtol.o(.text) for strtol
     uart_echo.o(i.main) refers to printf8.o(i.__0sprintf$8) for __2sprintf
     uart_echo.o(i.main) refers to uart_echo.o(i.GSMsendGPRS) for GSMsendGPRS
@@ -1150,148 +1150,148 @@ Image Symbol Table
     i.ADCSequenceStepConfigure               0x00000dcc   Section        0  adc.o(i.ADCSequenceStepConfigure)
     i.ADCrun                                 0x00000e68   Section        0  uart_echo.o(i.ADCrun)
     i.BatteryStateMachine                    0x00000ea8   Section        0  uart_echo.o(i.BatteryStateMachine)
-    i.EEPROMInit                             0x00000f58   Section        0  eeprom.o(i.EEPROMInit)
-    i.EEPROMProgramNonBlocking               0x00000f9c   Section        0  eeprom.o(i.EEPROMProgramNonBlocking)
-    i.EEPROMRead                             0x00001018   Section        0  eeprom.o(i.EEPROMRead)
-    i.FlashUserGet                           0x0000104c   Section        0  flash.o(i.FlashUserGet)
-    i.GPIODirModeSet                         0x00001060   Section        0  gpio.o(i.GPIODirModeSet)
-    i.GPIOIntClear                           0x00001088   Section        0  gpio.o(i.GPIOIntClear)
-    i.GPIOIntDisable                         0x0000108e   Section        0  gpio.o(i.GPIOIntDisable)
-    i.GPIOIntEnable                          0x0000109c   Section        0  gpio.o(i.GPIOIntEnable)
-    i.GPIOIntRegister                        0x000010ac   Section        0  gpio.o(i.GPIOIntRegister)
-    i.GPIOIntTypeSet                         0x00001104   Section        0  gpio.o(i.GPIOIntTypeSet)
-    i.GPIOPadConfigSet                       0x00001154   Section        0  gpio.o(i.GPIOPadConfigSet)
-    i.GPIOPinRead                            0x0000128e   Section        0  gpio.o(i.GPIOPinRead)
-    i.GPIOPinTypeADC                         0x00001294   Section        0  gpio.o(i.GPIOPinTypeADC)
-    i.GPIOPinWrite                           0x000012b0   Section        0  gpio.o(i.GPIOPinWrite)
-    i.GSMcheckPower                          0x000012b8   Section        0  uart_echo.o(i.GSMcheckPower)
-    i.GSMcheckSignal                         0x000013e4   Section        0  uart_echo.o(i.GSMcheckSignal)
-    i.GSMcheckTime                           0x00001480   Section        0  uart_echo.o(i.GSMcheckTime)
-    i.GSMgetIMEI                             0x00001584   Section        0  uart_echo.o(i.GSMgetIMEI)
-    i.GSMgetNum                              0x000015f0   Section        0  uart_echo.o(i.GSMgetNum)
-    i.GSMgetResponse                         0x000016c0   Section        0  uart_echo.o(i.GSMgetResponse)
-    i.GSMgetSIMstatus                        0x00001728   Section        0  uart_echo.o(i.GSMgetSIMstatus)
-    i.GSMparseMessage                        0x000017e8   Section        0  uart_echo.o(i.GSMparseMessage)
-    i.GSMprocessMessage                      0x000018b8   Section        0  uart_echo.o(i.GSMprocessMessage)
-    i.GSMsendGPRS                            0x00001a6c   Section        0  uart_echo.o(i.GSMsendGPRS)
-    i.GSMsendSMS                             0x00001bbc   Section        0  uart_echo.o(i.GSMsendSMS)
-    i.GSMtogglePower                         0x00001c70   Section        0  uart_echo.o(i.GSMtogglePower)
-    i.GSMtoggleTalk                          0x00001d50   Section        0  uart_echo.o(i.GSMtoggleTalk)
-    i.I2CMasterBusy                          0x00001df4   Section        0  i2c.o(i.I2CMasterBusy)
-    i.I2CMasterControl                       0x00001e00   Section        0  i2c.o(i.I2CMasterControl)
-    i.I2CMasterDataGet                       0x00001e04   Section        0  i2c.o(i.I2CMasterDataGet)
-    i.I2CMasterDataPut                       0x00001e08   Section        0  i2c.o(i.I2CMasterDataPut)
-    i.I2CMasterSlaveAddrSet                  0x00001e0c   Section        0  i2c.o(i.I2CMasterSlaveAddrSet)
-    i.I2Creceive                             0x00001e14   Section        0  uart_echo.o(i.I2Creceive)
-    i.I2Csend                                0x00001e6c   Section        0  uart_echo.o(i.I2Csend)
-    i.IntEnable                              0x00001f0c   Section        0  interrupt.o(i.IntEnable)
-    i.IntRegister                            0x00001f70   Section        0  interrupt.o(i.IntRegister)
-    i.LCDchar                                0x00001fa4   Section        0  uart_echo.o(i.LCDchar)
-    i.LCDclear                               0x0000200c   Section        0  uart_echo.o(i.LCDclear)
-    i.LCDsend                                0x000020c8   Section        0  uart_echo.o(i.LCDsend)
-    i.LCDsetAddress                          0x000020ec   Section        0  uart_echo.o(i.LCDsetAddress)
-    i.LCDstring                              0x00002112   Section        0  uart_echo.o(i.LCDstring)
-    i.MPR121IntHandler                       0x00002174   Section        0  uart_echo.o(i.MPR121IntHandler)
-    i.MPR121keypress                         0x000021a8   Section        0  uart_echo.o(i.MPR121keypress)
-    i.MPR121toggleLock                       0x000022d8   Section        0  uart_echo.o(i.MPR121toggleLock)
-    i.SSI3sendByte                           0x000023e8   Section        0  uart_echo.o(i.SSI3sendByte)
-    i.SSIBusy                                0x0000241c   Section        0  ssi.o(i.SSIBusy)
-    i.SSIConfigSetExpClk                     0x00002424   Section        0  ssi.o(i.SSIConfigSetExpClk)
-    i.SSIDataPut                             0x0000246e   Section        0  ssi.o(i.SSIDataPut)
-    i.SSIEnable                              0x0000247a   Section        0  ssi.o(i.SSIEnable)
-    i.SysCtlClockGet                         0x00002484   Section        0  sysctl.o(i.SysCtlClockGet)
-    i.SysCtlPeripheralReset                  0x000025e8   Section        0  sysctl.o(i.SysCtlPeripheralReset)
-    i.Timer0KeyHoldIntHandler                0x00002624   Section        0  uart_echo.o(i.Timer0KeyHoldIntHandler)
-    i.Timer1KeysIdleIntHandler               0x00002658   Section        0  uart_echo.o(i.Timer1KeysIdleIntHandler)
-    i.Timer2ADCIntHandler                    0x0000268c   Section        0  uart_echo.o(i.Timer2ADCIntHandler)
-    i.Timer3ATmitDataIntHandler              0x000026bc   Section        0  uart_echo.o(i.Timer3ATmitDataIntHandler)
-    i.UART0StdioConfig                       0x000026dc   Section        0  uart0stdio.o(i.UART0StdioConfig)
-    i.UART0printf                            0x00002738   Section        0  uart0stdio.o(i.UART0printf)
-    i.UART0vprintf                           0x0000275c   Section        0  uart0stdio.o(i.UART0vprintf)
-    i.UART0write                             0x00002910   Section        0  uart0stdio.o(i.UART0write)
-    i.UART1StdioConfig                       0x0000294c   Section        0  uart1stdio.o(i.UART1StdioConfig)
-    i.UART1gets                              0x000029a8   Section        0  uart1stdio.o(i.UART1gets)
-    i.UART1printf                            0x00002a14   Section        0  uart1stdio.o(i.UART1printf)
-    i.UART1vprintf                           0x00002a38   Section        0  uart1stdio.o(i.UART1vprintf)
-    i.UART1write                             0x00002bec   Section        0  uart1stdio.o(i.UART1write)
-    i.UARTBusy                               0x00002c28   Section        0  uart.o(i.UARTBusy)
-    i.UARTIntHandler0                        0x00002c30   Section        0  uart_echo.o(i.UARTIntHandler0)
-    i.UARTIntHandler1                        0x00002c90   Section        0  uart_echo.o(i.UARTIntHandler1)
-    i.__0snprintf$8                          0x00002d40   Section        0  printf8.o(i.__0snprintf$8)
-    i.__0sprintf$8                           0x00002d68   Section        0  printf8.o(i.__0sprintf$8)
-    i.__aeabi_errno_addr                     0x00002d90   Section        0  errno.o(i.__aeabi_errno_addr)
-    i.__scatterload_copy                     0x00002d98   Section       14  handlers.o(i.__scatterload_copy)
-    i.__scatterload_null                     0x00002da6   Section        2  handlers.o(i.__scatterload_null)
-    i.__scatterload_zeroinit                 0x00002da8   Section       14  handlers.o(i.__scatterload_zeroinit)
-    i._printf_core                           0x00002db8   Section        0  printf8.o(i._printf_core)
-    _printf_core                             0x00002db9   Thumb Code   988  printf8.o(i._printf_core)
-    i._printf_post_padding                   0x000031c0   Section        0  printf8.o(i._printf_post_padding)
-    _printf_post_padding                     0x000031c1   Thumb Code    38  printf8.o(i._printf_post_padding)
-    i._printf_pre_padding                    0x000031e6   Section        0  printf8.o(i._printf_pre_padding)
-    _printf_pre_padding                      0x000031e7   Thumb Code    48  printf8.o(i._printf_pre_padding)
-    i._snputc                                0x00003216   Section        0  printf8.o(i._snputc)
-    _snputc                                  0x00003217   Thumb Code    22  printf8.o(i._snputc)
-    i._sputc                                 0x0000322c   Section        0  printf8.o(i._sputc)
-    _sputc                                   0x0000322d   Thumb Code    10  printf8.o(i._sputc)
-    i.blinkLED                               0x00003238   Section        0  uart_echo.o(i.blinkLED)
-    i.initADC                                0x000032bc   Section        0  uart_echo.o(i.initADC)
-    i.initI2C                                0x00003364   Section        0  uart_echo.o(i.initI2C)
-    i.initLCD                                0x0000341c   Section        0  uart_echo.o(i.initLCD)
-    i.initMPR121                             0x00003508   Section        0  uart_echo.o(i.initMPR121)
-    i.initSSI3                               0x000036b4   Section        0  uart_echo.o(i.initSSI3)
-    i.main                                   0x0000372c   Section        0  uart_echo.o(i.main)
-    i.relayLatch                             0x000042f4   Section        0  uart_echo.o(i.relayLatch)
-    i.relayOff                               0x00004360   Section        0  uart_echo.o(i.relayOff)
-    i.relayOn                                0x00004398   Section        0  uart_echo.o(i.relayOn)
-    i.relaySet                               0x000043d8   Section        0  uart_echo.o(i.relaySet)
-    i.relayStatusE2                          0x000044a0   Section        0  uart_echo.o(i.relayStatusE2)
-    i.relayToggle                            0x0000450c   Section        0  uart_echo.o(i.relayToggle)
-    .constdata                               0x00004520   Section      656  uart_echo.o(.constdata)
-    FONT6x8                                  0x00004520   Data         588  uart_echo.o(.constdata)
-    .constdata                               0x000047b0   Section       28  uart0stdio.o(.constdata)
-    g_pcHex                                  0x000047b0   Data           4  uart0stdio.o(.constdata)
-    g_ui32UARTBase                           0x000047b4   Data          12  uart0stdio.o(.constdata)
-    g_ui32UARTPeriph                         0x000047c0   Data          12  uart0stdio.o(.constdata)
-    .constdata                               0x000047cc   Section       28  uart1stdio.o(.constdata)
-    g_pcHex                                  0x000047cc   Data           4  uart1stdio.o(.constdata)
-    g_ui32UARTBase                           0x000047d0   Data          12  uart1stdio.o(.constdata)
-    g_ui32UARTPeriph                         0x000047dc   Data          12  uart1stdio.o(.constdata)
-    .constdata                               0x000047e8   Section      528  gpio.o(.constdata)
-    g_ppui32GPIOIntMapBlizzard               0x000047e8   Data         192  gpio.o(.constdata)
-    g_ppui32GPIOIntMapSnowflake              0x000048a8   Data         192  gpio.o(.constdata)
-    g_pui32GPIOBaseAddrs                     0x00004968   Data         144  gpio.o(.constdata)
-    .constdata                               0x000049f8   Section      452  sysctl.o(.constdata)
-    g_pui32VCOFrequencies                    0x000049f8   Data           8  sysctl.o(.constdata)
-    g_pui32Xtals                             0x00004a00   Data         108  sysctl.o(.constdata)
-    g_pppui32XTALtoVCO                       0x00004a6c   Data         288  sysctl.o(.constdata)
-    g_sXTALtoMEMTIM                          0x00004b8c   Data          48  sysctl.o(.constdata)
-    .constdata                               0x00004bbc   Section      268  interrupt.o(.constdata)
-    g_pui32Priority                          0x00004bbc   Data          32  interrupt.o(.constdata)
-    g_pui32Regs                              0x00004bdc   Data         156  interrupt.o(.constdata)
-    g_pui32EnRegs                            0x00004c78   Data          20  interrupt.o(.constdata)
-    g_pui32Dii16Regs                         0x00004c8c   Data          20  interrupt.o(.constdata)
-    g_pui32PendRegs                          0x00004ca0   Data          20  interrupt.o(.constdata)
-    g_pui32UnpendRegs                        0x00004cb4   Data          20  interrupt.o(.constdata)
-    .constdata                               0x00004cc8   Section      129  ctype_o.o(.constdata)
-    .constdata                               0x00004d4c   Section        4  ctype_o.o(.constdata)
-    table                                    0x00004d4c   Data           4  ctype_o.o(.constdata)
-    .conststring                             0x00004d50   Section       17  uart0stdio.o(.conststring)
-    .data                                    0x20000000   Section      239  uart_echo.o(.data)
-    heldKeyFlag                              0x2000000a   Data           1  uart_echo.o(.data)
-    keysUnlocked                             0x2000000b   Data           1  uart_echo.o(.data)
-    touchFlag                                0x2000000c   Data           1  uart_echo.o(.data)
-    keysIdleFlag                             0x2000000d   Data           1  uart_echo.o(.data)
-    dataTmitFlag                             0x2000000e   Data           1  uart_echo.o(.data)
-    .data                                    0x200000f0   Section        8  uart0stdio.o(.data)
-    bLastWasCR                               0x200000f0   Data           1  uart0stdio.o(.data)
-    g_ui32Base                               0x200000f4   Data           4  uart0stdio.o(.data)
-    .data                                    0x200000f8   Section        8  uart1stdio.o(.data)
-    bLastWasCR                               0x200000f8   Data           1  uart1stdio.o(.data)
-    g_ui32Base                               0x200000fc   Data           4  uart1stdio.o(.data)
-    .data                                    0x20000100   Section        4  strtok.o(.data)
-    state                                    0x20000100   Data           4  strtok.o(.data)
-    .data                                    0x20000104   Section        4  errno.o(.data)
-    _errno                                   0x20000104   Data           4  errno.o(.data)
+    i.EEPROMInit                             0x00000f40   Section        0  eeprom.o(i.EEPROMInit)
+    i.EEPROMProgramNonBlocking               0x00000f84   Section        0  eeprom.o(i.EEPROMProgramNonBlocking)
+    i.EEPROMRead                             0x00001000   Section        0  eeprom.o(i.EEPROMRead)
+    i.FlashUserGet                           0x00001034   Section        0  flash.o(i.FlashUserGet)
+    i.GPIODirModeSet                         0x00001048   Section        0  gpio.o(i.GPIODirModeSet)
+    i.GPIOIntClear                           0x00001070   Section        0  gpio.o(i.GPIOIntClear)
+    i.GPIOIntDisable                         0x00001076   Section        0  gpio.o(i.GPIOIntDisable)
+    i.GPIOIntEnable                          0x00001084   Section        0  gpio.o(i.GPIOIntEnable)
+    i.GPIOIntRegister                        0x00001094   Section        0  gpio.o(i.GPIOIntRegister)
+    i.GPIOIntTypeSet                         0x000010ec   Section        0  gpio.o(i.GPIOIntTypeSet)
+    i.GPIOPadConfigSet                       0x0000113c   Section        0  gpio.o(i.GPIOPadConfigSet)
+    i.GPIOPinRead                            0x00001276   Section        0  gpio.o(i.GPIOPinRead)
+    i.GPIOPinTypeADC                         0x0000127c   Section        0  gpio.o(i.GPIOPinTypeADC)
+    i.GPIOPinWrite                           0x00001298   Section        0  gpio.o(i.GPIOPinWrite)
+    i.GSMcheckPower                          0x000012a0   Section        0  uart_echo.o(i.GSMcheckPower)
+    i.GSMcheckSignal                         0x000013cc   Section        0  uart_echo.o(i.GSMcheckSignal)
+    i.GSMcheckTime                           0x00001468   Section        0  uart_echo.o(i.GSMcheckTime)
+    i.GSMgetIMEI                             0x0000156c   Section        0  uart_echo.o(i.GSMgetIMEI)
+    i.GSMgetNum                              0x000015d8   Section        0  uart_echo.o(i.GSMgetNum)
+    i.GSMgetResponse                         0x000016a8   Section        0  uart_echo.o(i.GSMgetResponse)
+    i.GSMgetSIMstatus                        0x00001710   Section        0  uart_echo.o(i.GSMgetSIMstatus)
+    i.GSMparseMessage                        0x000017d0   Section        0  uart_echo.o(i.GSMparseMessage)
+    i.GSMprocessMessage                      0x000018a0   Section        0  uart_echo.o(i.GSMprocessMessage)
+    i.GSMsendGPRS                            0x00001a54   Section        0  uart_echo.o(i.GSMsendGPRS)
+    i.GSMsendSMS                             0x00001ba4   Section        0  uart_echo.o(i.GSMsendSMS)
+    i.GSMtogglePower                         0x00001c58   Section        0  uart_echo.o(i.GSMtogglePower)
+    i.GSMtoggleTalk                          0x00001d38   Section        0  uart_echo.o(i.GSMtoggleTalk)
+    i.I2CMasterBusy                          0x00001ddc   Section        0  i2c.o(i.I2CMasterBusy)
+    i.I2CMasterControl                       0x00001de8   Section        0  i2c.o(i.I2CMasterControl)
+    i.I2CMasterDataGet                       0x00001dec   Section        0  i2c.o(i.I2CMasterDataGet)
+    i.I2CMasterDataPut                       0x00001df0   Section        0  i2c.o(i.I2CMasterDataPut)
+    i.I2CMasterSlaveAddrSet                  0x00001df4   Section        0  i2c.o(i.I2CMasterSlaveAddrSet)
+    i.I2Creceive                             0x00001dfc   Section        0  uart_echo.o(i.I2Creceive)
+    i.I2Csend                                0x00001e54   Section        0  uart_echo.o(i.I2Csend)
+    i.IntEnable                              0x00001ef4   Section        0  interrupt.o(i.IntEnable)
+    i.IntRegister                            0x00001f58   Section        0  interrupt.o(i.IntRegister)
+    i.LCDchar                                0x00001f8c   Section        0  uart_echo.o(i.LCDchar)
+    i.LCDclear                               0x00001ff4   Section        0  uart_echo.o(i.LCDclear)
+    i.LCDsend                                0x000020b0   Section        0  uart_echo.o(i.LCDsend)
+    i.LCDsetAddress                          0x000020d4   Section        0  uart_echo.o(i.LCDsetAddress)
+    i.LCDstring                              0x000020fa   Section        0  uart_echo.o(i.LCDstring)
+    i.MPR121IntHandler                       0x0000215c   Section        0  uart_echo.o(i.MPR121IntHandler)
+    i.MPR121keypress                         0x00002190   Section        0  uart_echo.o(i.MPR121keypress)
+    i.MPR121toggleLock                       0x000022c0   Section        0  uart_echo.o(i.MPR121toggleLock)
+    i.SSI3sendByte                           0x000023d0   Section        0  uart_echo.o(i.SSI3sendByte)
+    i.SSIBusy                                0x00002404   Section        0  ssi.o(i.SSIBusy)
+    i.SSIConfigSetExpClk                     0x0000240c   Section        0  ssi.o(i.SSIConfigSetExpClk)
+    i.SSIDataPut                             0x00002456   Section        0  ssi.o(i.SSIDataPut)
+    i.SSIEnable                              0x00002462   Section        0  ssi.o(i.SSIEnable)
+    i.SysCtlClockGet                         0x0000246c   Section        0  sysctl.o(i.SysCtlClockGet)
+    i.SysCtlPeripheralReset                  0x000025d0   Section        0  sysctl.o(i.SysCtlPeripheralReset)
+    i.Timer0KeyHoldIntHandler                0x0000260c   Section        0  uart_echo.o(i.Timer0KeyHoldIntHandler)
+    i.Timer1KeysIdleIntHandler               0x00002640   Section        0  uart_echo.o(i.Timer1KeysIdleIntHandler)
+    i.Timer2ADCIntHandler                    0x00002674   Section        0  uart_echo.o(i.Timer2ADCIntHandler)
+    i.Timer3ATmitDataIntHandler              0x000026a4   Section        0  uart_echo.o(i.Timer3ATmitDataIntHandler)
+    i.UART0StdioConfig                       0x000026c4   Section        0  uart0stdio.o(i.UART0StdioConfig)
+    i.UART0printf                            0x00002720   Section        0  uart0stdio.o(i.UART0printf)
+    i.UART0vprintf                           0x00002744   Section        0  uart0stdio.o(i.UART0vprintf)
+    i.UART0write                             0x000028f8   Section        0  uart0stdio.o(i.UART0write)
+    i.UART1StdioConfig                       0x00002934   Section        0  uart1stdio.o(i.UART1StdioConfig)
+    i.UART1gets                              0x00002990   Section        0  uart1stdio.o(i.UART1gets)
+    i.UART1printf                            0x000029fc   Section        0  uart1stdio.o(i.UART1printf)
+    i.UART1vprintf                           0x00002a20   Section        0  uart1stdio.o(i.UART1vprintf)
+    i.UART1write                             0x00002bd4   Section        0  uart1stdio.o(i.UART1write)
+    i.UARTBusy                               0x00002c10   Section        0  uart.o(i.UARTBusy)
+    i.UARTIntHandler0                        0x00002c18   Section        0  uart_echo.o(i.UARTIntHandler0)
+    i.UARTIntHandler1                        0x00002c78   Section        0  uart_echo.o(i.UARTIntHandler1)
+    i.__0snprintf$8                          0x00002d28   Section        0  printf8.o(i.__0snprintf$8)
+    i.__0sprintf$8                           0x00002d50   Section        0  printf8.o(i.__0sprintf$8)
+    i.__aeabi_errno_addr                     0x00002d78   Section        0  errno.o(i.__aeabi_errno_addr)
+    i.__scatterload_copy                     0x00002d80   Section       14  handlers.o(i.__scatterload_copy)
+    i.__scatterload_null                     0x00002d8e   Section        2  handlers.o(i.__scatterload_null)
+    i.__scatterload_zeroinit                 0x00002d90   Section       14  handlers.o(i.__scatterload_zeroinit)
+    i._printf_core                           0x00002da0   Section        0  printf8.o(i._printf_core)
+    _printf_core                             0x00002da1   Thumb Code   988  printf8.o(i._printf_core)
+    i._printf_post_padding                   0x000031a8   Section        0  printf8.o(i._printf_post_padding)
+    _printf_post_padding                     0x000031a9   Thumb Code    38  printf8.o(i._printf_post_padding)
+    i._printf_pre_padding                    0x000031ce   Section        0  printf8.o(i._printf_pre_padding)
+    _printf_pre_padding                      0x000031cf   Thumb Code    48  printf8.o(i._printf_pre_padding)
+    i._snputc                                0x000031fe   Section        0  printf8.o(i._snputc)
+    _snputc                                  0x000031ff   Thumb Code    22  printf8.o(i._snputc)
+    i._sputc                                 0x00003214   Section        0  printf8.o(i._sputc)
+    _sputc                                   0x00003215   Thumb Code    10  printf8.o(i._sputc)
+    i.blinkLED                               0x00003220   Section        0  uart_echo.o(i.blinkLED)
+    i.initADC                                0x000032a4   Section        0  uart_echo.o(i.initADC)
+    i.initI2C                                0x0000334c   Section        0  uart_echo.o(i.initI2C)
+    i.initLCD                                0x00003404   Section        0  uart_echo.o(i.initLCD)
+    i.initMPR121                             0x000034f0   Section        0  uart_echo.o(i.initMPR121)
+    i.initSSI3                               0x0000369c   Section        0  uart_echo.o(i.initSSI3)
+    i.main                                   0x00003714   Section        0  uart_echo.o(i.main)
+    i.relayLatch                             0x000042f0   Section        0  uart_echo.o(i.relayLatch)
+    i.relayOff                               0x0000435c   Section        0  uart_echo.o(i.relayOff)
+    i.relayOn                                0x00004394   Section        0  uart_echo.o(i.relayOn)
+    i.relaySet                               0x000043d4   Section        0  uart_echo.o(i.relaySet)
+    i.relayStatusE2                          0x0000449c   Section        0  uart_echo.o(i.relayStatusE2)
+    i.relayToggle                            0x00004508   Section        0  uart_echo.o(i.relayToggle)
+    .constdata                               0x0000451c   Section      656  uart_echo.o(.constdata)
+    FONT6x8                                  0x0000451c   Data         588  uart_echo.o(.constdata)
+    .constdata                               0x000047ac   Section       28  uart0stdio.o(.constdata)
+    g_pcHex                                  0x000047ac   Data           4  uart0stdio.o(.constdata)
+    g_ui32UARTBase                           0x000047b0   Data          12  uart0stdio.o(.constdata)
+    g_ui32UARTPeriph                         0x000047bc   Data          12  uart0stdio.o(.constdata)
+    .constdata                               0x000047c8   Section       28  uart1stdio.o(.constdata)
+    g_pcHex                                  0x000047c8   Data           4  uart1stdio.o(.constdata)
+    g_ui32UARTBase                           0x000047cc   Data          12  uart1stdio.o(.constdata)
+    g_ui32UARTPeriph                         0x000047d8   Data          12  uart1stdio.o(.constdata)
+    .constdata                               0x000047e4   Section      528  gpio.o(.constdata)
+    g_ppui32GPIOIntMapBlizzard               0x000047e4   Data         192  gpio.o(.constdata)
+    g_ppui32GPIOIntMapSnowflake              0x000048a4   Data         192  gpio.o(.constdata)
+    g_pui32GPIOBaseAddrs                     0x00004964   Data         144  gpio.o(.constdata)
+    .constdata                               0x000049f4   Section      452  sysctl.o(.constdata)
+    g_pui32VCOFrequencies                    0x000049f4   Data           8  sysctl.o(.constdata)
+    g_pui32Xtals                             0x000049fc   Data         108  sysctl.o(.constdata)
+    g_pppui32XTALtoVCO                       0x00004a68   Data         288  sysctl.o(.constdata)
+    g_sXTALtoMEMTIM                          0x00004b88   Data          48  sysctl.o(.constdata)
+    .constdata                               0x00004bb8   Section      268  interrupt.o(.constdata)
+    g_pui32Priority                          0x00004bb8   Data          32  interrupt.o(.constdata)
+    g_pui32Regs                              0x00004bd8   Data         156  interrupt.o(.constdata)
+    g_pui32EnRegs                            0x00004c74   Data          20  interrupt.o(.constdata)
+    g_pui32Dii16Regs                         0x00004c88   Data          20  interrupt.o(.constdata)
+    g_pui32PendRegs                          0x00004c9c   Data          20  interrupt.o(.constdata)
+    g_pui32UnpendRegs                        0x00004cb0   Data          20  interrupt.o(.constdata)
+    .constdata                               0x00004cc4   Section      129  ctype_o.o(.constdata)
+    .constdata                               0x00004d48   Section        4  ctype_o.o(.constdata)
+    table                                    0x00004d48   Data           4  ctype_o.o(.constdata)
+    .conststring                             0x00004d4c   Section       17  uart0stdio.o(.conststring)
+    .data                                    0x20000000   Section      251  uart_echo.o(.data)
+    heldKeyFlag                              0x2000000b   Data           1  uart_echo.o(.data)
+    keysUnlocked                             0x2000000c   Data           1  uart_echo.o(.data)
+    touchFlag                                0x2000000d   Data           1  uart_echo.o(.data)
+    keysIdleFlag                             0x2000000e   Data           1  uart_echo.o(.data)
+    dataTmitFlag                             0x2000000f   Data           1  uart_echo.o(.data)
+    .data                                    0x200000fc   Section        8  uart0stdio.o(.data)
+    bLastWasCR                               0x200000fc   Data           1  uart0stdio.o(.data)
+    g_ui32Base                               0x20000100   Data           4  uart0stdio.o(.data)
+    .data                                    0x20000104   Section        8  uart1stdio.o(.data)
+    bLastWasCR                               0x20000104   Data           1  uart1stdio.o(.data)
+    g_ui32Base                               0x20000108   Data           4  uart1stdio.o(.data)
+    .data                                    0x2000010c   Section        4  strtok.o(.data)
+    state                                    0x2000010c   Data           4  strtok.o(.data)
+    .data                                    0x20000110   Section        4  errno.o(.data)
+    _errno                                   0x20000110   Data           4  errno.o(.data)
     vtable                                   0x20000400   Section      620  interrupt.o(vtable)
     g_pfnRAMVectors                          0x20000400   Data         620  interrupt.o(vtable)
     .bss                                     0x2000066c   Section    11413  uart_echo.o(.bss)
@@ -1416,144 +1416,146 @@ Image Symbol Table
     ADCSequenceEnable                        0x00000dbf   Thumb Code    14  adc.o(i.ADCSequenceEnable)
     ADCSequenceStepConfigure                 0x00000dcd   Thumb Code   154  adc.o(i.ADCSequenceStepConfigure)
     ADCrun                                   0x00000e69   Thumb Code    50  uart_echo.o(i.ADCrun)
-    BatteryStateMachine                      0x00000ea9   Thumb Code   170  uart_echo.o(i.BatteryStateMachine)
-    EEPROMInit                               0x00000f59   Thumb Code    60  eeprom.o(i.EEPROMInit)
-    EEPROMProgramNonBlocking                 0x00000f9d   Thumb Code   102  eeprom.o(i.EEPROMProgramNonBlocking)
-    EEPROMRead                               0x00001019   Thumb Code    48  eeprom.o(i.EEPROMRead)
-    FlashUserGet                             0x0000104d   Thumb Code    14  flash.o(i.FlashUserGet)
-    GPIODirModeSet                           0x00001061   Thumb Code    40  gpio.o(i.GPIODirModeSet)
-    GPIOIntClear                             0x00001089   Thumb Code     6  gpio.o(i.GPIOIntClear)
-    GPIOIntDisable                           0x0000108f   Thumb Code    14  gpio.o(i.GPIOIntDisable)
-    GPIOIntEnable                            0x0000109d   Thumb Code    14  gpio.o(i.GPIOIntEnable)
-    GPIOIntRegister                          0x000010ad   Thumb Code    70  gpio.o(i.GPIOIntRegister)
-    GPIOIntTypeSet                           0x00001105   Thumb Code    80  gpio.o(i.GPIOIntTypeSet)
-    GPIOPadConfigSet                         0x00001155   Thumb Code   314  gpio.o(i.GPIOPadConfigSet)
-    GPIOPinRead                              0x0000128f   Thumb Code     6  gpio.o(i.GPIOPinRead)
-    GPIOPinTypeADC                           0x00001295   Thumb Code    28  gpio.o(i.GPIOPinTypeADC)
-    GPIOPinWrite                             0x000012b1   Thumb Code     6  gpio.o(i.GPIOPinWrite)
-    GSMcheckPower                            0x000012b9   Thumb Code   144  uart_echo.o(i.GSMcheckPower)
-    GSMcheckSignal                           0x000013e5   Thumb Code   120  uart_echo.o(i.GSMcheckSignal)
-    GSMcheckTime                             0x00001481   Thumb Code   168  uart_echo.o(i.GSMcheckTime)
-    GSMgetIMEI                               0x00001585   Thumb Code    72  uart_echo.o(i.GSMgetIMEI)
-    GSMgetNum                                0x000015f1   Thumb Code   126  uart_echo.o(i.GSMgetNum)
-    GSMgetResponse                           0x000016c1   Thumb Code    86  uart_echo.o(i.GSMgetResponse)
-    GSMgetSIMstatus                          0x00001729   Thumb Code    86  uart_echo.o(i.GSMgetSIMstatus)
-    GSMparseMessage                          0x000017e9   Thumb Code   182  uart_echo.o(i.GSMparseMessage)
-    GSMprocessMessage                        0x000018b9   Thumb Code   248  uart_echo.o(i.GSMprocessMessage)
-    GSMsendGPRS                              0x00001a6d   Thumb Code   146  uart_echo.o(i.GSMsendGPRS)
-    GSMsendSMS                               0x00001bbd   Thumb Code   118  uart_echo.o(i.GSMsendSMS)
-    GSMtogglePower                           0x00001c71   Thumb Code   128  uart_echo.o(i.GSMtogglePower)
-    GSMtoggleTalk                            0x00001d51   Thumb Code    82  uart_echo.o(i.GSMtoggleTalk)
-    I2CMasterBusy                            0x00001df5   Thumb Code    12  i2c.o(i.I2CMasterBusy)
-    I2CMasterControl                         0x00001e01   Thumb Code     4  i2c.o(i.I2CMasterControl)
-    I2CMasterDataGet                         0x00001e05   Thumb Code     4  i2c.o(i.I2CMasterDataGet)
-    I2CMasterDataPut                         0x00001e09   Thumb Code     4  i2c.o(i.I2CMasterDataPut)
-    I2CMasterSlaveAddrSet                    0x00001e0d   Thumb Code     8  i2c.o(i.I2CMasterSlaveAddrSet)
-    I2Creceive                               0x00001e15   Thumb Code    84  uart_echo.o(i.I2Creceive)
-    I2Csend                                  0x00001e6d   Thumb Code   154  uart_echo.o(i.I2Csend)
-    IntEnable                                0x00001f0d   Thumb Code    92  interrupt.o(i.IntEnable)
-    IntRegister                              0x00001f71   Thumb Code    44  interrupt.o(i.IntRegister)
-    LCDchar                                  0x00001fa5   Thumb Code    98  uart_echo.o(i.LCDchar)
-    LCDclear                                 0x0000200d   Thumb Code   188  uart_echo.o(i.LCDclear)
-    LCDsend                                  0x000020c9   Thumb Code    30  uart_echo.o(i.LCDsend)
-    LCDsetAddress                            0x000020ed   Thumb Code    38  uart_echo.o(i.LCDsetAddress)
-    LCDstring                                0x00002113   Thumb Code    98  uart_echo.o(i.LCDstring)
-    MPR121IntHandler                         0x00002175   Thumb Code    44  uart_echo.o(i.MPR121IntHandler)
-    MPR121keypress                           0x000021a9   Thumb Code   282  uart_echo.o(i.MPR121keypress)
-    MPR121toggleLock                         0x000022d9   Thumb Code   198  uart_echo.o(i.MPR121toggleLock)
-    SSI3sendByte                             0x000023e9   Thumb Code    46  uart_echo.o(i.SSI3sendByte)
-    SSIBusy                                  0x0000241d   Thumb Code     8  ssi.o(i.SSIBusy)
-    SSIConfigSetExpClk                       0x00002425   Thumb Code    74  ssi.o(i.SSIConfigSetExpClk)
-    SSIDataPut                               0x0000246f   Thumb Code    12  ssi.o(i.SSIDataPut)
-    SSIEnable                                0x0000247b   Thumb Code    10  ssi.o(i.SSIEnable)
-    SysCtlClockGet                           0x00002485   Thumb Code   314  sysctl.o(i.SysCtlClockGet)
-    SysCtlPeripheralReset                    0x000025e9   Thumb Code    56  sysctl.o(i.SysCtlPeripheralReset)
-    Timer0KeyHoldIntHandler                  0x00002625   Thumb Code    44  uart_echo.o(i.Timer0KeyHoldIntHandler)
-    Timer1KeysIdleIntHandler                 0x00002659   Thumb Code    42  uart_echo.o(i.Timer1KeysIdleIntHandler)
-    Timer2ADCIntHandler                      0x0000268d   Thumb Code    40  uart_echo.o(i.Timer2ADCIntHandler)
-    Timer3ATmitDataIntHandler                0x000026bd   Thumb Code    24  uart_echo.o(i.Timer3ATmitDataIntHandler)
-    UART0StdioConfig                         0x000026dd   Thumb Code    82  uart0stdio.o(i.UART0StdioConfig)
-    UART0printf                              0x00002739   Thumb Code    30  uart0stdio.o(i.UART0printf)
-    UART0vprintf                             0x0000275d   Thumb Code   420  uart0stdio.o(i.UART0vprintf)
-    UART0write                               0x00002911   Thumb Code    56  uart0stdio.o(i.UART0write)
-    UART1StdioConfig                         0x0000294d   Thumb Code    82  uart1stdio.o(i.UART1StdioConfig)
-    UART1gets                                0x000029a9   Thumb Code   100  uart1stdio.o(i.UART1gets)
-    UART1printf                              0x00002a15   Thumb Code    30  uart1stdio.o(i.UART1printf)
-    UART1vprintf                             0x00002a39   Thumb Code   420  uart1stdio.o(i.UART1vprintf)
-    UART1write                               0x00002bed   Thumb Code    56  uart1stdio.o(i.UART1write)
-    UARTBusy                                 0x00002c29   Thumb Code     8  uart.o(i.UARTBusy)
-    UARTIntHandler0                          0x00002c31   Thumb Code    80  uart_echo.o(i.UARTIntHandler0)
-    UARTIntHandler1                          0x00002c91   Thumb Code   150  uart_echo.o(i.UARTIntHandler1)
-    __0snprintf$8                            0x00002d41   Thumb Code    36  printf8.o(i.__0snprintf$8)
-    __1snprintf$8                            0x00002d41   Thumb Code     0  printf8.o(i.__0snprintf$8)
-    __2snprintf                              0x00002d41   Thumb Code     0  printf8.o(i.__0snprintf$8)
-    __0sprintf$8                             0x00002d69   Thumb Code    34  printf8.o(i.__0sprintf$8)
-    __1sprintf$8                             0x00002d69   Thumb Code     0  printf8.o(i.__0sprintf$8)
-    __2sprintf                               0x00002d69   Thumb Code     0  printf8.o(i.__0sprintf$8)
-    __aeabi_errno_addr                       0x00002d91   Thumb Code     4  errno.o(i.__aeabi_errno_addr)
-    __rt_errno_addr                          0x00002d91   Thumb Code     0  errno.o(i.__aeabi_errno_addr)
-    __scatterload_copy                       0x00002d99   Thumb Code    14  handlers.o(i.__scatterload_copy)
-    __scatterload_null                       0x00002da7   Thumb Code     2  handlers.o(i.__scatterload_null)
-    __scatterload_zeroinit                   0x00002da9   Thumb Code    14  handlers.o(i.__scatterload_zeroinit)
-    blinkLED                                 0x00003239   Thumb Code   128  uart_echo.o(i.blinkLED)
-    initADC                                  0x000032bd   Thumb Code   152  uart_echo.o(i.initADC)
-    initI2C                                  0x00003365   Thumb Code   148  uart_echo.o(i.initI2C)
-    initLCD                                  0x0000341d   Thumb Code   218  uart_echo.o(i.initLCD)
-    initMPR121                               0x00003509   Thumb Code   426  uart_echo.o(i.initMPR121)
-    initSSI3                                 0x000036b5   Thumb Code    94  uart_echo.o(i.initSSI3)
-    main                                     0x0000372d   Thumb Code  2956  uart_echo.o(i.main)
-    relayLatch                               0x000042f5   Thumb Code    96  uart_echo.o(i.relayLatch)
-    relayOff                                 0x00004361   Thumb Code    48  uart_echo.o(i.relayOff)
-    relayOn                                  0x00004399   Thumb Code    56  uart_echo.o(i.relayOn)
-    relaySet                                 0x000043d9   Thumb Code   170  uart_echo.o(i.relaySet)
-    relayStatusE2                            0x000044a1   Thumb Code    56  uart_echo.o(i.relayStatusE2)
-    relayToggle                              0x0000450d   Thumb Code    16  uart_echo.o(i.relayToggle)
-    __ctype_table                            0x00004cc8   Data         129  ctype_o.o(.constdata)
-    Region$$Table$$Base                      0x00004d64   Number         0  anon$$obj.o(Region$$Table)
-    Region$$Table$$Limit                     0x00004d84   Number         0  anon$$obj.o(Region$$Table)
+    BatteryStateMachine                      0x00000ea9   Thumb Code   146  uart_echo.o(i.BatteryStateMachine)
+    EEPROMInit                               0x00000f41   Thumb Code    60  eeprom.o(i.EEPROMInit)
+    EEPROMProgramNonBlocking                 0x00000f85   Thumb Code   102  eeprom.o(i.EEPROMProgramNonBlocking)
+    EEPROMRead                               0x00001001   Thumb Code    48  eeprom.o(i.EEPROMRead)
+    FlashUserGet                             0x00001035   Thumb Code    14  flash.o(i.FlashUserGet)
+    GPIODirModeSet                           0x00001049   Thumb Code    40  gpio.o(i.GPIODirModeSet)
+    GPIOIntClear                             0x00001071   Thumb Code     6  gpio.o(i.GPIOIntClear)
+    GPIOIntDisable                           0x00001077   Thumb Code    14  gpio.o(i.GPIOIntDisable)
+    GPIOIntEnable                            0x00001085   Thumb Code    14  gpio.o(i.GPIOIntEnable)
+    GPIOIntRegister                          0x00001095   Thumb Code    70  gpio.o(i.GPIOIntRegister)
+    GPIOIntTypeSet                           0x000010ed   Thumb Code    80  gpio.o(i.GPIOIntTypeSet)
+    GPIOPadConfigSet                         0x0000113d   Thumb Code   314  gpio.o(i.GPIOPadConfigSet)
+    GPIOPinRead                              0x00001277   Thumb Code     6  gpio.o(i.GPIOPinRead)
+    GPIOPinTypeADC                           0x0000127d   Thumb Code    28  gpio.o(i.GPIOPinTypeADC)
+    GPIOPinWrite                             0x00001299   Thumb Code     6  gpio.o(i.GPIOPinWrite)
+    GSMcheckPower                            0x000012a1   Thumb Code   144  uart_echo.o(i.GSMcheckPower)
+    GSMcheckSignal                           0x000013cd   Thumb Code   120  uart_echo.o(i.GSMcheckSignal)
+    GSMcheckTime                             0x00001469   Thumb Code   168  uart_echo.o(i.GSMcheckTime)
+    GSMgetIMEI                               0x0000156d   Thumb Code    72  uart_echo.o(i.GSMgetIMEI)
+    GSMgetNum                                0x000015d9   Thumb Code   126  uart_echo.o(i.GSMgetNum)
+    GSMgetResponse                           0x000016a9   Thumb Code    86  uart_echo.o(i.GSMgetResponse)
+    GSMgetSIMstatus                          0x00001711   Thumb Code    86  uart_echo.o(i.GSMgetSIMstatus)
+    GSMparseMessage                          0x000017d1   Thumb Code   182  uart_echo.o(i.GSMparseMessage)
+    GSMprocessMessage                        0x000018a1   Thumb Code   248  uart_echo.o(i.GSMprocessMessage)
+    GSMsendGPRS                              0x00001a55   Thumb Code   146  uart_echo.o(i.GSMsendGPRS)
+    GSMsendSMS                               0x00001ba5   Thumb Code   118  uart_echo.o(i.GSMsendSMS)
+    GSMtogglePower                           0x00001c59   Thumb Code   128  uart_echo.o(i.GSMtogglePower)
+    GSMtoggleTalk                            0x00001d39   Thumb Code    82  uart_echo.o(i.GSMtoggleTalk)
+    I2CMasterBusy                            0x00001ddd   Thumb Code    12  i2c.o(i.I2CMasterBusy)
+    I2CMasterControl                         0x00001de9   Thumb Code     4  i2c.o(i.I2CMasterControl)
+    I2CMasterDataGet                         0x00001ded   Thumb Code     4  i2c.o(i.I2CMasterDataGet)
+    I2CMasterDataPut                         0x00001df1   Thumb Code     4  i2c.o(i.I2CMasterDataPut)
+    I2CMasterSlaveAddrSet                    0x00001df5   Thumb Code     8  i2c.o(i.I2CMasterSlaveAddrSet)
+    I2Creceive                               0x00001dfd   Thumb Code    84  uart_echo.o(i.I2Creceive)
+    I2Csend                                  0x00001e55   Thumb Code   154  uart_echo.o(i.I2Csend)
+    IntEnable                                0x00001ef5   Thumb Code    92  interrupt.o(i.IntEnable)
+    IntRegister                              0x00001f59   Thumb Code    44  interrupt.o(i.IntRegister)
+    LCDchar                                  0x00001f8d   Thumb Code    98  uart_echo.o(i.LCDchar)
+    LCDclear                                 0x00001ff5   Thumb Code   188  uart_echo.o(i.LCDclear)
+    LCDsend                                  0x000020b1   Thumb Code    30  uart_echo.o(i.LCDsend)
+    LCDsetAddress                            0x000020d5   Thumb Code    38  uart_echo.o(i.LCDsetAddress)
+    LCDstring                                0x000020fb   Thumb Code    98  uart_echo.o(i.LCDstring)
+    MPR121IntHandler                         0x0000215d   Thumb Code    44  uart_echo.o(i.MPR121IntHandler)
+    MPR121keypress                           0x00002191   Thumb Code   282  uart_echo.o(i.MPR121keypress)
+    MPR121toggleLock                         0x000022c1   Thumb Code   198  uart_echo.o(i.MPR121toggleLock)
+    SSI3sendByte                             0x000023d1   Thumb Code    46  uart_echo.o(i.SSI3sendByte)
+    SSIBusy                                  0x00002405   Thumb Code     8  ssi.o(i.SSIBusy)
+    SSIConfigSetExpClk                       0x0000240d   Thumb Code    74  ssi.o(i.SSIConfigSetExpClk)
+    SSIDataPut                               0x00002457   Thumb Code    12  ssi.o(i.SSIDataPut)
+    SSIEnable                                0x00002463   Thumb Code    10  ssi.o(i.SSIEnable)
+    SysCtlClockGet                           0x0000246d   Thumb Code   314  sysctl.o(i.SysCtlClockGet)
+    SysCtlPeripheralReset                    0x000025d1   Thumb Code    56  sysctl.o(i.SysCtlPeripheralReset)
+    Timer0KeyHoldIntHandler                  0x0000260d   Thumb Code    44  uart_echo.o(i.Timer0KeyHoldIntHandler)
+    Timer1KeysIdleIntHandler                 0x00002641   Thumb Code    42  uart_echo.o(i.Timer1KeysIdleIntHandler)
+    Timer2ADCIntHandler                      0x00002675   Thumb Code    40  uart_echo.o(i.Timer2ADCIntHandler)
+    Timer3ATmitDataIntHandler                0x000026a5   Thumb Code    24  uart_echo.o(i.Timer3ATmitDataIntHandler)
+    UART0StdioConfig                         0x000026c5   Thumb Code    82  uart0stdio.o(i.UART0StdioConfig)
+    UART0printf                              0x00002721   Thumb Code    30  uart0stdio.o(i.UART0printf)
+    UART0vprintf                             0x00002745   Thumb Code   420  uart0stdio.o(i.UART0vprintf)
+    UART0write                               0x000028f9   Thumb Code    56  uart0stdio.o(i.UART0write)
+    UART1StdioConfig                         0x00002935   Thumb Code    82  uart1stdio.o(i.UART1StdioConfig)
+    UART1gets                                0x00002991   Thumb Code   100  uart1stdio.o(i.UART1gets)
+    UART1printf                              0x000029fd   Thumb Code    30  uart1stdio.o(i.UART1printf)
+    UART1vprintf                             0x00002a21   Thumb Code   420  uart1stdio.o(i.UART1vprintf)
+    UART1write                               0x00002bd5   Thumb Code    56  uart1stdio.o(i.UART1write)
+    UARTBusy                                 0x00002c11   Thumb Code     8  uart.o(i.UARTBusy)
+    UARTIntHandler0                          0x00002c19   Thumb Code    80  uart_echo.o(i.UARTIntHandler0)
+    UARTIntHandler1                          0x00002c79   Thumb Code   150  uart_echo.o(i.UARTIntHandler1)
+    __0snprintf$8                            0x00002d29   Thumb Code    36  printf8.o(i.__0snprintf$8)
+    __1snprintf$8                            0x00002d29   Thumb Code     0  printf8.o(i.__0snprintf$8)
+    __2snprintf                              0x00002d29   Thumb Code     0  printf8.o(i.__0snprintf$8)
+    __0sprintf$8                             0x00002d51   Thumb Code    34  printf8.o(i.__0sprintf$8)
+    __1sprintf$8                             0x00002d51   Thumb Code     0  printf8.o(i.__0sprintf$8)
+    __2sprintf                               0x00002d51   Thumb Code     0  printf8.o(i.__0sprintf$8)
+    __aeabi_errno_addr                       0x00002d79   Thumb Code     4  errno.o(i.__aeabi_errno_addr)
+    __rt_errno_addr                          0x00002d79   Thumb Code     0  errno.o(i.__aeabi_errno_addr)
+    __scatterload_copy                       0x00002d81   Thumb Code    14  handlers.o(i.__scatterload_copy)
+    __scatterload_null                       0x00002d8f   Thumb Code     2  handlers.o(i.__scatterload_null)
+    __scatterload_zeroinit                   0x00002d91   Thumb Code    14  handlers.o(i.__scatterload_zeroinit)
+    blinkLED                                 0x00003221   Thumb Code   128  uart_echo.o(i.blinkLED)
+    initADC                                  0x000032a5   Thumb Code   152  uart_echo.o(i.initADC)
+    initI2C                                  0x0000334d   Thumb Code   148  uart_echo.o(i.initI2C)
+    initLCD                                  0x00003405   Thumb Code   218  uart_echo.o(i.initLCD)
+    initMPR121                               0x000034f1   Thumb Code   426  uart_echo.o(i.initMPR121)
+    initSSI3                                 0x0000369d   Thumb Code    94  uart_echo.o(i.initSSI3)
+    main                                     0x00003715   Thumb Code  2950  uart_echo.o(i.main)
+    relayLatch                               0x000042f1   Thumb Code    96  uart_echo.o(i.relayLatch)
+    relayOff                                 0x0000435d   Thumb Code    48  uart_echo.o(i.relayOff)
+    relayOn                                  0x00004395   Thumb Code    56  uart_echo.o(i.relayOn)
+    relaySet                                 0x000043d5   Thumb Code   170  uart_echo.o(i.relaySet)
+    relayStatusE2                            0x0000449d   Thumb Code    56  uart_echo.o(i.relayStatusE2)
+    relayToggle                              0x00004509   Thumb Code    16  uart_echo.o(i.relayToggle)
+    __ctype_table                            0x00004cc4   Data         129  ctype_o.o(.constdata)
+    Region$$Table$$Base                      0x00004d60   Number         0  anon$$obj.o(Region$$Table)
+    Region$$Table$$Limit                     0x00004d80   Number         0  anon$$obj.o(Region$$Table)
     testGSM                                  0x20000000   Data           1  uart_echo.o(.data)
     testEEPROM                               0x20000001   Data           1  uart_echo.o(.data)
     testDelete                               0x20000002   Data           1  uart_echo.o(.data)
     testNotify                               0x20000003   Data           1  uart_echo.o(.data)
     batt_state                               0x20000004   Data           1  uart_echo.o(.data)
     last_state                               0x20000005   Data           1  uart_echo.o(.data)
-    GSMoff                                   0x20000006   Data           1  uart_echo.o(.data)
-    debugMode                                0x20000007   Data           1  uart_echo.o(.data)
-    SIMpresent                               0x20000008   Data           1  uart_echo.o(.data)
-    msgFlag                                  0x20000009   Data           1  uart_echo.o(.data)
-    pressedKey                               0x2000000f   Data           1  uart_echo.o(.data)
-    heldKey                                  0x20000010   Data           1  uart_echo.o(.data)
-    var                                      0x20000011   Data           1  uart_echo.o(.data)
-    touchedMap                               0x20000012   Data           2  uart_echo.o(.data)
-    relayStatus                              0x20000014   Data           4  uart_echo.o(.data)
-    relayEnable                              0x20000018   Data           4  uart_echo.o(.data)
-    relaySource                              0x2000001c   Data           4  uart_echo.o(.data)
-    E2relayStatus                            0x20000020   Data           4  uart_echo.o(.data)
-    curCol                                   0x20000024   Data           4  uart_echo.o(.data)
-    msgContent                               0x20000028   Data           4  uart_echo.o(.data)
-    msgSender                                0x2000002c   Data           4  uart_echo.o(.data)
-    msgDate                                  0x20000030   Data           4  uart_echo.o(.data)
-    msgTime                                  0x20000034   Data           4  uart_echo.o(.data)
-    boardID1                                 0x20000038   Data           4  uart_echo.o(.data)
-    boardID2                                 0x2000003c   Data           4  uart_echo.o(.data)
-    DCV                                      0x20000040   Data           4  uart_echo.o(.data)
-    i                                        0x20000044   Data           4  uart_echo.o(.data)
-    ulStatus0                                0x20000048   Data           4  uart_echo.o(.data)
-    ulStatus1                                0x2000004c   Data           4  uart_echo.o(.data)
-    msgCountStr                              0x20000050   Data           4  uart_echo.o(.data)
-    hh                                       0x20000054   Data           4  uart_echo.o(.data)
-    mm                                       0x20000058   Data           4  uart_echo.o(.data)
-    ss                                       0x2000005c   Data           4  uart_echo.o(.data)
-    DD                                       0x20000060   Data           4  uart_echo.o(.data)
-    MM                                       0x20000064   Data           4  uart_echo.o(.data)
-    YY                                       0x20000068   Data           4  uart_echo.o(.data)
-    zz                                       0x2000006c   Data           4  uart_echo.o(.data)
-    balance                                  0x20000070   Data           7  uart_echo.o(.data)
-    relayStates                              0x20000078   Data          24  uart_echo.o(.data)
+    setSource                                0x20000006   Data           1  uart_echo.o(.data)
+    GSMoff                                   0x20000007   Data           1  uart_echo.o(.data)
+    debugMode                                0x20000008   Data           1  uart_echo.o(.data)
+    SIMpresent                               0x20000009   Data           1  uart_echo.o(.data)
+    msgFlag                                  0x2000000a   Data           1  uart_echo.o(.data)
+    pressedKey                               0x20000010   Data           1  uart_echo.o(.data)
+    heldKey                                  0x20000011   Data           1  uart_echo.o(.data)
+    var                                      0x20000012   Data           1  uart_echo.o(.data)
+    touchedMap                               0x20000014   Data           2  uart_echo.o(.data)
+    setPriority                              0x20000018   Data           4  uart_echo.o(.data)
+    relayStatus                              0x2000001c   Data           4  uart_echo.o(.data)
+    relayEnable                              0x20000020   Data           4  uart_echo.o(.data)
+    relaySource                              0x20000024   Data           4  uart_echo.o(.data)
+    E2relayStatus                            0x20000028   Data           4  uart_echo.o(.data)
+    curCol                                   0x2000002c   Data           4  uart_echo.o(.data)
+    msgContent                               0x20000030   Data           4  uart_echo.o(.data)
+    msgSender                                0x20000034   Data           4  uart_echo.o(.data)
+    msgDate                                  0x20000038   Data           4  uart_echo.o(.data)
+    msgTime                                  0x2000003c   Data           4  uart_echo.o(.data)
+    boardID1                                 0x20000040   Data           4  uart_echo.o(.data)
+    boardID2                                 0x20000044   Data           4  uart_echo.o(.data)
+    DCV                                      0x20000048   Data           4  uart_echo.o(.data)
+    i                                        0x2000004c   Data           4  uart_echo.o(.data)
+    ulStatus0                                0x20000050   Data           4  uart_echo.o(.data)
+    ulStatus1                                0x20000054   Data           4  uart_echo.o(.data)
+    msgCountStr                              0x20000058   Data           4  uart_echo.o(.data)
+    hh                                       0x2000005c   Data           4  uart_echo.o(.data)
+    mm                                       0x20000060   Data           4  uart_echo.o(.data)
+    ss                                       0x20000064   Data           4  uart_echo.o(.data)
+    DD                                       0x20000068   Data           4  uart_echo.o(.data)
+    MM                                       0x2000006c   Data           4  uart_echo.o(.data)
+    YY                                       0x20000070   Data           4  uart_echo.o(.data)
+    zz                                       0x20000074   Data           4  uart_echo.o(.data)
+    balance                                  0x20000078   Data           7  uart_echo.o(.data)
+    relayPriority                            0x20000080   Data          16  uart_echo.o(.data)
     ctrlID                                   0x20000090   Data          11  uart_echo.o(.data)
     IMEI                                     0x2000009b   Data          16  uart_echo.o(.data)
     SIMID                                    0x200000ab   Data          12  uart_echo.o(.data)
-    postURL                                  0x200000b7   Data          56  uart_echo.o(.data)
+    postURL                                  0x200000b7   Data          68  uart_echo.o(.data)
     fullTimestamp                            0x2000066c   Data          23  uart_echo.o(.bss)
     ptr                                      0x20000903   Data       10000  uart_echo.o(.bss)
     responseLine                             0x20003013   Data         750  uart_echo.o(.bss)
@@ -1567,9 +1569,9 @@ Memory Map of the image
 
   Image Entry point : 0x0000026d
 
-  Load Region LR_IROM (Base: 0x00000000, Size: 0x000053f0, Max: 0x00040000, ABSOLUTE, COMPRESSED[0x00004e04])
+  Load Region LR_IROM (Base: 0x00000000, Size: 0x000053ec, Max: 0x00040000, ABSOLUTE, COMPRESSED[0x00004e0c])
 
-    Execution Region ER_IROM (Base: 0x00000000, Size: 0x00004d84, Max: 0x00040000, ABSOLUTE)
+    Execution Region ER_IROM (Base: 0x00000000, Size: 0x00004d80, Max: 0x00040000, ABSOLUTE)
 
     Base Addr    Size         Type   Attr      Idx    E Section Name        Object
 
@@ -1624,128 +1626,128 @@ Memory Map of the image
     0x00000dcc   0x0000009a   Code   RO          541    i.ADCSequenceStepConfigure  driverlib.lib(adc.o)
     0x00000e66   0x00000002   PAD
     0x00000e68   0x00000040   Code   RO            1    i.ADCrun            uart_echo.o
-    0x00000ea8   0x000000b0   Code   RO            2    i.BatteryStateMachine  uart_echo.o
-    0x00000f58   0x00000044   Code   RO          786    i.EEPROMInit        driverlib.lib(eeprom.o)
-    0x00000f9c   0x0000007c   Code   RO          793    i.EEPROMProgramNonBlocking  driverlib.lib(eeprom.o)
-    0x00001018   0x00000034   Code   RO          794    i.EEPROMRead        driverlib.lib(eeprom.o)
-    0x0000104c   0x00000014   Code   RO          919    i.FlashUserGet      driverlib.lib(flash.o)
-    0x00001060   0x00000028   Code   RO         1005    i.GPIODirModeSet    driverlib.lib(gpio.o)
-    0x00001088   0x00000006   Code   RO         1006    i.GPIOIntClear      driverlib.lib(gpio.o)
-    0x0000108e   0x0000000e   Code   RO         1007    i.GPIOIntDisable    driverlib.lib(gpio.o)
-    0x0000109c   0x0000000e   Code   RO         1008    i.GPIOIntEnable     driverlib.lib(gpio.o)
-    0x000010aa   0x00000002   PAD
-    0x000010ac   0x00000058   Code   RO         1009    i.GPIOIntRegister   driverlib.lib(gpio.o)
-    0x00001104   0x00000050   Code   RO         1012    i.GPIOIntTypeSet    driverlib.lib(gpio.o)
-    0x00001154   0x0000013a   Code   RO         1015    i.GPIOPadConfigSet  driverlib.lib(gpio.o)
-    0x0000128e   0x00000006   Code   RO         1017    i.GPIOPinRead       driverlib.lib(gpio.o)
-    0x00001294   0x0000001c   Code   RO         1018    i.GPIOPinTypeADC    driverlib.lib(gpio.o)
-    0x000012b0   0x00000006   Code   RO         1047    i.GPIOPinWrite      driverlib.lib(gpio.o)
-    0x000012b6   0x00000002   PAD
-    0x000012b8   0x0000012c   Code   RO            5    i.GSMcheckPower     uart_echo.o
-    0x000013e4   0x0000009c   Code   RO            6    i.GSMcheckSignal    uart_echo.o
-    0x00001480   0x00000104   Code   RO            7    i.GSMcheckTime      uart_echo.o
-    0x00001584   0x0000006c   Code   RO            8    i.GSMgetIMEI        uart_echo.o
-    0x000015f0   0x000000d0   Code   RO            9    i.GSMgetNum         uart_echo.o
-    0x000016c0   0x00000068   Code   RO           10    i.GSMgetResponse    uart_echo.o
-    0x00001728   0x000000c0   Code   RO           11    i.GSMgetSIMstatus   uart_echo.o
-    0x000017e8   0x000000d0   Code   RO           12    i.GSMparseMessage   uart_echo.o
-    0x000018b8   0x000001b4   Code   RO           13    i.GSMprocessMessage  uart_echo.o
-    0x00001a6c   0x00000150   Code   RO           14    i.GSMsendGPRS       uart_echo.o
-    0x00001bbc   0x000000b4   Code   RO           15    i.GSMsendSMS        uart_echo.o
-    0x00001c70   0x000000e0   Code   RO           16    i.GSMtogglePower    uart_echo.o
-    0x00001d50   0x000000a4   Code   RO           17    i.GSMtoggleTalk     uart_echo.o
-    0x00001df4   0x0000000c   Code   RO         1312    i.I2CMasterBusy     driverlib.lib(i2c.o)
-    0x00001e00   0x00000004   Code   RO         1313    i.I2CMasterControl  driverlib.lib(i2c.o)
-    0x00001e04   0x00000004   Code   RO         1314    i.I2CMasterDataGet  driverlib.lib(i2c.o)
-    0x00001e08   0x00000004   Code   RO         1315    i.I2CMasterDataPut  driverlib.lib(i2c.o)
-    0x00001e0c   0x00000008   Code   RO         1330    i.I2CMasterSlaveAddrSet  driverlib.lib(i2c.o)
-    0x00001e14   0x00000058   Code   RO           18    i.I2Creceive        uart_echo.o
-    0x00001e6c   0x000000a0   Code   RO           19    i.I2Csend           uart_echo.o
-    0x00001f0c   0x00000064   Code   RO         2427    i.IntEnable         driverlib.lib(interrupt.o)
-    0x00001f70   0x00000034   Code   RO         2439    i.IntRegister       driverlib.lib(interrupt.o)
-    0x00001fa4   0x00000068   Code   RO           20    i.LCDchar           uart_echo.o
-    0x0000200c   0x000000bc   Code   RO           21    i.LCDclear          uart_echo.o
-    0x000020c8   0x00000024   Code   RO           22    i.LCDsend           uart_echo.o
-    0x000020ec   0x00000026   Code   RO           23    i.LCDsetAddress     uart_echo.o
-    0x00002112   0x00000062   Code   RO           24    i.LCDstring         uart_echo.o
-    0x00002174   0x00000034   Code   RO           25    i.MPR121IntHandler  uart_echo.o
-    0x000021a8   0x00000130   Code   RO           26    i.MPR121keypress    uart_echo.o
-    0x000022d8   0x00000110   Code   RO           27    i.MPR121toggleLock  uart_echo.o
-    0x000023e8   0x00000034   Code   RO           28    i.SSI3sendByte      uart_echo.o
-    0x0000241c   0x00000008   Code   RO         1638    i.SSIBusy           driverlib.lib(ssi.o)
-    0x00002424   0x0000004a   Code   RO         1641    i.SSIConfigSetExpClk  driverlib.lib(ssi.o)
-    0x0000246e   0x0000000c   Code   RO         1646    i.SSIDataPut        driverlib.lib(ssi.o)
-    0x0000247a   0x0000000a   Code   RO         1649    i.SSIEnable         driverlib.lib(ssi.o)
-    0x00002484   0x00000164   Code   RO         1788    i.SysCtlClockGet    driverlib.lib(sysctl.o)
-    0x000025e8   0x0000003c   Code   RO         1824    i.SysCtlPeripheralReset  driverlib.lib(sysctl.o)
-    0x00002624   0x00000034   Code   RO           29    i.Timer0KeyHoldIntHandler  uart_echo.o
-    0x00002658   0x00000034   Code   RO           30    i.Timer1KeysIdleIntHandler  uart_echo.o
-    0x0000268c   0x00000030   Code   RO           31    i.Timer2ADCIntHandler  uart_echo.o
-    0x000026bc   0x00000020   Code   RO           32    i.Timer3ATmitDataIntHandler  uart_echo.o
-    0x000026dc   0x0000005c   Code   RO          396    i.UART0StdioConfig  uart0stdio.o
-    0x00002738   0x00000024   Code   RO          399    i.UART0printf       uart0stdio.o
-    0x0000275c   0x000001b4   Code   RO          400    i.UART0vprintf      uart0stdio.o
-    0x00002910   0x0000003c   Code   RO          401    i.UART0write        uart0stdio.o
-    0x0000294c   0x0000005c   Code   RO          451    i.UART1StdioConfig  uart1stdio.o
-    0x000029a8   0x0000006c   Code   RO          453    i.UART1gets         uart1stdio.o
-    0x00002a14   0x00000024   Code   RO          454    i.UART1printf       uart1stdio.o
-    0x00002a38   0x000001b4   Code   RO          455    i.UART1vprintf      uart1stdio.o
-    0x00002bec   0x0000003c   Code   RO          456    i.UART1write        uart1stdio.o
-    0x00002c28   0x00000008   Code   RO         2132    i.UARTBusy          driverlib.lib(uart.o)
-    0x00002c30   0x00000060   Code   RO           33    i.UARTIntHandler0   uart_echo.o
-    0x00002c90   0x000000b0   Code   RO           34    i.UARTIntHandler1   uart_echo.o
-    0x00002d40   0x00000028   Code   RO         2793    i.__0snprintf$8     mc_w.l(printf8.o)
-    0x00002d68   0x00000028   Code   RO         2794    i.__0sprintf$8      mc_w.l(printf8.o)
-    0x00002d90   0x00000008   Code   RO         2881    i.__aeabi_errno_addr  mc_w.l(errno.o)
-    0x00002d98   0x0000000e   Code   RO         2924    i.__scatterload_copy  mc_w.l(handlers.o)
-    0x00002da6   0x00000002   Code   RO         2925    i.__scatterload_null  mc_w.l(handlers.o)
-    0x00002da8   0x0000000e   Code   RO         2926    i.__scatterload_zeroinit  mc_w.l(handlers.o)
-    0x00002db6   0x00000002   PAD
-    0x00002db8   0x00000408   Code   RO         2799    i._printf_core      mc_w.l(printf8.o)
-    0x000031c0   0x00000026   Code   RO         2800    i._printf_post_padding  mc_w.l(printf8.o)
-    0x000031e6   0x00000030   Code   RO         2801    i._printf_pre_padding  mc_w.l(printf8.o)
-    0x00003216   0x00000016   Code   RO         2802    i._snputc           mc_w.l(printf8.o)
-    0x0000322c   0x0000000a   Code   RO         2803    i._sputc            mc_w.l(printf8.o)
-    0x00003236   0x00000002   PAD
-    0x00003238   0x00000084   Code   RO           35    i.blinkLED          uart_echo.o
-    0x000032bc   0x000000a8   Code   RO           36    i.initADC           uart_echo.o
-    0x00003364   0x000000b8   Code   RO           37    i.initI2C           uart_echo.o
-    0x0000341c   0x000000ec   Code   RO           38    i.initLCD           uart_echo.o
-    0x00003508   0x000001aa   Code   RO           39    i.initMPR121        uart_echo.o
-    0x000036b2   0x00000002   PAD
-    0x000036b4   0x00000078   Code   RO           40    i.initSSI3          uart_echo.o
-    0x0000372c   0x00000bc8   Code   RO           41    i.main              uart_echo.o
-    0x000042f4   0x0000006c   Code   RO           42    i.relayLatch        uart_echo.o
-    0x00004360   0x00000038   Code   RO           43    i.relayOff          uart_echo.o
-    0x00004398   0x00000040   Code   RO           44    i.relayOn           uart_echo.o
-    0x000043d8   0x000000c8   Code   RO           46    i.relaySet          uart_echo.o
-    0x000044a0   0x0000006c   Code   RO           47    i.relayStatusE2     uart_echo.o
-    0x0000450c   0x00000014   Code   RO           48    i.relayToggle       uart_echo.o
-    0x00004520   0x00000290   Data   RO           51    .constdata          uart_echo.o
-    0x000047b0   0x0000001c   Data   RO          402    .constdata          uart0stdio.o
-    0x000047cc   0x0000001c   Data   RO          457    .constdata          uart1stdio.o
-    0x000047e8   0x00000210   Data   RO         1048    .constdata          driverlib.lib(gpio.o)
-    0x000049f8   0x000001c4   Data   RO         1840    .constdata          driverlib.lib(sysctl.o)
-    0x00004bbc   0x0000010c   Data   RO         2443    .constdata          driverlib.lib(interrupt.o)
-    0x00004cc8   0x00000081   Data   RO         2540    .constdata          mc_w.l(ctype_o.o)
-    0x00004d49   0x00000003   PAD
-    0x00004d4c   0x00000004   Data   RO         2541    .constdata          mc_w.l(ctype_o.o)
-    0x00004d50   0x00000011   Data   RO          403    .conststring        uart0stdio.o
-    0x00004d61   0x00000003   PAD
-    0x00004d64   0x00000020   Data   RO         2922    Region$$Table       anon$$obj.o
+    0x00000ea8   0x00000098   Code   RO            2    i.BatteryStateMachine  uart_echo.o
+    0x00000f40   0x00000044   Code   RO          786    i.EEPROMInit        driverlib.lib(eeprom.o)
+    0x00000f84   0x0000007c   Code   RO          793    i.EEPROMProgramNonBlocking  driverlib.lib(eeprom.o)
+    0x00001000   0x00000034   Code   RO          794    i.EEPROMRead        driverlib.lib(eeprom.o)
+    0x00001034   0x00000014   Code   RO          919    i.FlashUserGet      driverlib.lib(flash.o)
+    0x00001048   0x00000028   Code   RO         1005    i.GPIODirModeSet    driverlib.lib(gpio.o)
+    0x00001070   0x00000006   Code   RO         1006    i.GPIOIntClear      driverlib.lib(gpio.o)
+    0x00001076   0x0000000e   Code   RO         1007    i.GPIOIntDisable    driverlib.lib(gpio.o)
+    0x00001084   0x0000000e   Code   RO         1008    i.GPIOIntEnable     driverlib.lib(gpio.o)
+    0x00001092   0x00000002   PAD
+    0x00001094   0x00000058   Code   RO         1009    i.GPIOIntRegister   driverlib.lib(gpio.o)
+    0x000010ec   0x00000050   Code   RO         1012    i.GPIOIntTypeSet    driverlib.lib(gpio.o)
+    0x0000113c   0x0000013a   Code   RO         1015    i.GPIOPadConfigSet  driverlib.lib(gpio.o)
+    0x00001276   0x00000006   Code   RO         1017    i.GPIOPinRead       driverlib.lib(gpio.o)
+    0x0000127c   0x0000001c   Code   RO         1018    i.GPIOPinTypeADC    driverlib.lib(gpio.o)
+    0x00001298   0x00000006   Code   RO         1047    i.GPIOPinWrite      driverlib.lib(gpio.o)
+    0x0000129e   0x00000002   PAD
+    0x000012a0   0x0000012c   Code   RO            5    i.GSMcheckPower     uart_echo.o
+    0x000013cc   0x0000009c   Code   RO            6    i.GSMcheckSignal    uart_echo.o
+    0x00001468   0x00000104   Code   RO            7    i.GSMcheckTime      uart_echo.o
+    0x0000156c   0x0000006c   Code   RO            8    i.GSMgetIMEI        uart_echo.o
+    0x000015d8   0x000000d0   Code   RO            9    i.GSMgetNum         uart_echo.o
+    0x000016a8   0x00000068   Code   RO           10    i.GSMgetResponse    uart_echo.o
+    0x00001710   0x000000c0   Code   RO           11    i.GSMgetSIMstatus   uart_echo.o
+    0x000017d0   0x000000d0   Code   RO           12    i.GSMparseMessage   uart_echo.o
+    0x000018a0   0x000001b4   Code   RO           13    i.GSMprocessMessage  uart_echo.o
+    0x00001a54   0x00000150   Code   RO           14    i.GSMsendGPRS       uart_echo.o
+    0x00001ba4   0x000000b4   Code   RO           15    i.GSMsendSMS        uart_echo.o
+    0x00001c58   0x000000e0   Code   RO           16    i.GSMtogglePower    uart_echo.o
+    0x00001d38   0x000000a4   Code   RO           17    i.GSMtoggleTalk     uart_echo.o
+    0x00001ddc   0x0000000c   Code   RO         1312    i.I2CMasterBusy     driverlib.lib(i2c.o)
+    0x00001de8   0x00000004   Code   RO         1313    i.I2CMasterControl  driverlib.lib(i2c.o)
+    0x00001dec   0x00000004   Code   RO         1314    i.I2CMasterDataGet  driverlib.lib(i2c.o)
+    0x00001df0   0x00000004   Code   RO         1315    i.I2CMasterDataPut  driverlib.lib(i2c.o)
+    0x00001df4   0x00000008   Code   RO         1330    i.I2CMasterSlaveAddrSet  driverlib.lib(i2c.o)
+    0x00001dfc   0x00000058   Code   RO           18    i.I2Creceive        uart_echo.o
+    0x00001e54   0x000000a0   Code   RO           19    i.I2Csend           uart_echo.o
+    0x00001ef4   0x00000064   Code   RO         2427    i.IntEnable         driverlib.lib(interrupt.o)
+    0x00001f58   0x00000034   Code   RO         2439    i.IntRegister       driverlib.lib(interrupt.o)
+    0x00001f8c   0x00000068   Code   RO           20    i.LCDchar           uart_echo.o
+    0x00001ff4   0x000000bc   Code   RO           21    i.LCDclear          uart_echo.o
+    0x000020b0   0x00000024   Code   RO           22    i.LCDsend           uart_echo.o
+    0x000020d4   0x00000026   Code   RO           23    i.LCDsetAddress     uart_echo.o
+    0x000020fa   0x00000062   Code   RO           24    i.LCDstring         uart_echo.o
+    0x0000215c   0x00000034   Code   RO           25    i.MPR121IntHandler  uart_echo.o
+    0x00002190   0x00000130   Code   RO           26    i.MPR121keypress    uart_echo.o
+    0x000022c0   0x00000110   Code   RO           27    i.MPR121toggleLock  uart_echo.o
+    0x000023d0   0x00000034   Code   RO           28    i.SSI3sendByte      uart_echo.o
+    0x00002404   0x00000008   Code   RO         1638    i.SSIBusy           driverlib.lib(ssi.o)
+    0x0000240c   0x0000004a   Code   RO         1641    i.SSIConfigSetExpClk  driverlib.lib(ssi.o)
+    0x00002456   0x0000000c   Code   RO         1646    i.SSIDataPut        driverlib.lib(ssi.o)
+    0x00002462   0x0000000a   Code   RO         1649    i.SSIEnable         driverlib.lib(ssi.o)
+    0x0000246c   0x00000164   Code   RO         1788    i.SysCtlClockGet    driverlib.lib(sysctl.o)
+    0x000025d0   0x0000003c   Code   RO         1824    i.SysCtlPeripheralReset  driverlib.lib(sysctl.o)
+    0x0000260c   0x00000034   Code   RO           29    i.Timer0KeyHoldIntHandler  uart_echo.o
+    0x00002640   0x00000034   Code   RO           30    i.Timer1KeysIdleIntHandler  uart_echo.o
+    0x00002674   0x00000030   Code   RO           31    i.Timer2ADCIntHandler  uart_echo.o
+    0x000026a4   0x00000020   Code   RO           32    i.Timer3ATmitDataIntHandler  uart_echo.o
+    0x000026c4   0x0000005c   Code   RO          396    i.UART0StdioConfig  uart0stdio.o
+    0x00002720   0x00000024   Code   RO          399    i.UART0printf       uart0stdio.o
+    0x00002744   0x000001b4   Code   RO          400    i.UART0vprintf      uart0stdio.o
+    0x000028f8   0x0000003c   Code   RO          401    i.UART0write        uart0stdio.o
+    0x00002934   0x0000005c   Code   RO          451    i.UART1StdioConfig  uart1stdio.o
+    0x00002990   0x0000006c   Code   RO          453    i.UART1gets         uart1stdio.o
+    0x000029fc   0x00000024   Code   RO          454    i.UART1printf       uart1stdio.o
+    0x00002a20   0x000001b4   Code   RO          455    i.UART1vprintf      uart1stdio.o
+    0x00002bd4   0x0000003c   Code   RO          456    i.UART1write        uart1stdio.o
+    0x00002c10   0x00000008   Code   RO         2132    i.UARTBusy          driverlib.lib(uart.o)
+    0x00002c18   0x00000060   Code   RO           33    i.UARTIntHandler0   uart_echo.o
+    0x00002c78   0x000000b0   Code   RO           34    i.UARTIntHandler1   uart_echo.o
+    0x00002d28   0x00000028   Code   RO         2793    i.__0snprintf$8     mc_w.l(printf8.o)
+    0x00002d50   0x00000028   Code   RO         2794    i.__0sprintf$8      mc_w.l(printf8.o)
+    0x00002d78   0x00000008   Code   RO         2881    i.__aeabi_errno_addr  mc_w.l(errno.o)
+    0x00002d80   0x0000000e   Code   RO         2924    i.__scatterload_copy  mc_w.l(handlers.o)
+    0x00002d8e   0x00000002   Code   RO         2925    i.__scatterload_null  mc_w.l(handlers.o)
+    0x00002d90   0x0000000e   Code   RO         2926    i.__scatterload_zeroinit  mc_w.l(handlers.o)
+    0x00002d9e   0x00000002   PAD
+    0x00002da0   0x00000408   Code   RO         2799    i._printf_core      mc_w.l(printf8.o)
+    0x000031a8   0x00000026   Code   RO         2800    i._printf_post_padding  mc_w.l(printf8.o)
+    0x000031ce   0x00000030   Code   RO         2801    i._printf_pre_padding  mc_w.l(printf8.o)
+    0x000031fe   0x00000016   Code   RO         2802    i._snputc           mc_w.l(printf8.o)
+    0x00003214   0x0000000a   Code   RO         2803    i._sputc            mc_w.l(printf8.o)
+    0x0000321e   0x00000002   PAD
+    0x00003220   0x00000084   Code   RO           35    i.blinkLED          uart_echo.o
+    0x000032a4   0x000000a8   Code   RO           36    i.initADC           uart_echo.o
+    0x0000334c   0x000000b8   Code   RO           37    i.initI2C           uart_echo.o
+    0x00003404   0x000000ec   Code   RO           38    i.initLCD           uart_echo.o
+    0x000034f0   0x000001aa   Code   RO           39    i.initMPR121        uart_echo.o
+    0x0000369a   0x00000002   PAD
+    0x0000369c   0x00000078   Code   RO           40    i.initSSI3          uart_echo.o
+    0x00003714   0x00000bdc   Code   RO           41    i.main              uart_echo.o
+    0x000042f0   0x0000006c   Code   RO           42    i.relayLatch        uart_echo.o
+    0x0000435c   0x00000038   Code   RO           43    i.relayOff          uart_echo.o
+    0x00004394   0x00000040   Code   RO           44    i.relayOn           uart_echo.o
+    0x000043d4   0x000000c8   Code   RO           46    i.relaySet          uart_echo.o
+    0x0000449c   0x0000006c   Code   RO           47    i.relayStatusE2     uart_echo.o
+    0x00004508   0x00000014   Code   RO           48    i.relayToggle       uart_echo.o
+    0x0000451c   0x00000290   Data   RO           51    .constdata          uart_echo.o
+    0x000047ac   0x0000001c   Data   RO          402    .constdata          uart0stdio.o
+    0x000047c8   0x0000001c   Data   RO          457    .constdata          uart1stdio.o
+    0x000047e4   0x00000210   Data   RO         1048    .constdata          driverlib.lib(gpio.o)
+    0x000049f4   0x000001c4   Data   RO         1840    .constdata          driverlib.lib(sysctl.o)
+    0x00004bb8   0x0000010c   Data   RO         2443    .constdata          driverlib.lib(interrupt.o)
+    0x00004cc4   0x00000081   Data   RO         2540    .constdata          mc_w.l(ctype_o.o)
+    0x00004d45   0x00000003   PAD
+    0x00004d48   0x00000004   Data   RO         2541    .constdata          mc_w.l(ctype_o.o)
+    0x00004d4c   0x00000011   Data   RO          403    .conststring        uart0stdio.o
+    0x00004d5d   0x00000003   PAD
+    0x00004d60   0x00000020   Data   RO         2922    Region$$Table       anon$$obj.o
 
 
-    Execution Region RW_IRAM (Base: 0x20000000, Size: 0x00005308, Max: 0x00008000, ABSOLUTE, COMPRESSED[0x00000080])
+    Execution Region RW_IRAM (Base: 0x20000000, Size: 0x00005308, Max: 0x00008000, ABSOLUTE, COMPRESSED[0x0000008c])
 
     Base Addr    Size         Type   Attr      Idx    E Section Name        Object
 
-    0x20000000   0x000000ef   Data   RW           52    .data               uart_echo.o
-    0x200000ef   0x00000001   PAD
-    0x200000f0   0x00000008   Data   RW          404    .data               uart0stdio.o
-    0x200000f8   0x00000008   Data   RW          459    .data               uart1stdio.o
-    0x20000100   0x00000004   Data   RW         2580    .data               mc_w.l(strtok.o)
-    0x20000104   0x00000004   Data   RW         2884    .data               mc_w.l(errno.o)
-    0x20000108   0x000002f8   PAD
+    0x20000000   0x000000fb   Data   RW           52    .data               uart_echo.o
+    0x200000fb   0x00000001   PAD
+    0x200000fc   0x00000008   Data   RW          404    .data               uart0stdio.o
+    0x20000104   0x00000008   Data   RW          459    .data               uart1stdio.o
+    0x2000010c   0x00000004   Data   RW         2580    .data               mc_w.l(strtok.o)
+    0x20000110   0x00000004   Data   RW         2884    .data               mc_w.l(errno.o)
+    0x20000114   0x000002ec   PAD
     0x20000400   0x0000026c   Data   RW         2444    vtable              driverlib.lib(interrupt.o)
     0x2000066c   0x00002c95   Zero   RW           49    .bss                uart_echo.o
     0x20003301   0x00000007   PAD
@@ -1762,10 +1764,10 @@ Image component sizes
        648        622          0          0       8192        256   startup_rvmdk.o
        624         36         45          8          0       4293   uart0stdio.o
        732         44         28          8          0       4437   uart1stdio.o
-      9802       2636        656        239      11413      37947   uart_echo.o
+      9798       2638        656        251      11413      37943   uart_echo.o
 
     ----------------------------------------------------------------------
-     11808       3338        764        256      19612      46933   Object Totals
+     11804       3340        764        268      19612      46929   Object Totals
          0          0         32          0          0          0   (incl. Generated)
          2          0          3          1          7          0   (incl. Padding)
 
@@ -1822,8 +1824,8 @@ Image component sizes
        228          0          0          0          0         96   dmul.o
 
     ----------------------------------------------------------------------
-      5888        226       1384       1388          0      26386   Library Totals
-        18          0          3        760          0          0   (incl. Padding)
+      5888        226       1384       1376          0      26386   Library Totals
+        18          0          3        748          0          0   (incl. Padding)
 
     ----------------------------------------------------------------------
 
@@ -1834,7 +1836,7 @@ Image component sizes
        494          0          0          0          0        424   mf_w.l
 
     ----------------------------------------------------------------------
-      5888        226       1384       1388          0      26386   Library Totals
+      5888        226       1384       1376          0      26386   Library Totals
 
     ----------------------------------------------------------------------
 
@@ -1843,15 +1845,15 @@ Image component sizes
 
       Code (inc. data)   RO Data    RW Data    ZI Data      Debug   
 
-     17696       3564       2148       1644      19612      63511   Grand Totals
-     17696       3564       2148        128      19612      63511   ELF Image Totals (compressed)
-     17696       3564       2148        128          0          0   ROM Totals
+     17692       3566       2148       1644      19612      63507   Grand Totals
+     17692       3566       2148        140      19612      63507   ELF Image Totals (compressed)
+     17692       3566       2148        140          0          0   ROM Totals
 
 ==============================================================================
 
-    Total RO  Size (Code + RO Data)                19844 (  19.38kB)
+    Total RO  Size (Code + RO Data)                19840 (  19.38kB)
     Total RW  Size (RW Data + ZI Data)             21256 (  20.76kB)
-    Total ROM Size (Code + RO Data + RW Data)      19972 (  19.50kB)
+    Total ROM Size (Code + RO Data + RW Data)      19980 (  19.51kB)
 
 ==============================================================================
 
